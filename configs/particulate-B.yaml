@@ -1,0 +1,10 @@
+model_size: B
+input_dim: 448
+dropout: 0.1
+use_normals: true
+max_parts: 16
+use_part_id_embedding: true
+use_raw_coords: true
+use_point_features_for_motion_decoding: false
+num_mask_hypotheses: 1
+motion_representation: per_point_closest

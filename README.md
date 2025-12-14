@@ -17,11 +17,25 @@ Particulate is a feed-forward approach that, given a single static 3D mesh of an
 ## 🔧 Installation
 Our implementation is tested on pytorch==2.4.0 with cuda 12.4 on Ubuntu 22.04. 
 ```
-conda create -n particulate 
+conda create -n particulate python=3.10
+conda activate particulate
 pip install -r requirements.txt
 ```
 
 ## 🚀 Inference
+To use our model to predict the articulated structure of a custom 3D model (alternatively, you can try our [demo](https://huggingface.co/spaces/rayli/particulate) on HuggingFace without local setup):
+
+```
+python infer.py --input_mesh ./hunyuan3d-examples/foldingchair.glb
+```
+
+The script will automatically download the pre-trained checkpoint from Huggingface.
+
+Extra arguments:
+- `up_dir`: The up direction of the input mesh. Our model is trained on 3D models with up direction +Z. To achieve optimal result, it is important to make sure the input mesh follow the same convention. The script will automatically rotate the input model to be +Z up with this argument. You can use the visualization in the [demo](https://huggingface.co/spaces/rayli/particulate) to determine the up direction.
+- `num_points`: The number of points to be sampled as input to the network. Note that we uniformly sample 50% of points and sample the remaining 50% from *sharp* edges. Please make sure the number of uniform points is larger than the number of faces in the input mesh.
+- `min_part_confidence`: Increasing this value will merge parts that have low confidence scores to other parts. Consider increasing this value if the prediction is over segmented.
+- `no_strict`: By default, the prediction will be post-processed to ensure that each articulated part is a union of different connected components in the original mesh (i.e., no connected components are split across parts). If the input mesh does **not** have clean connected components, please specify `--no_strict`.
 
 ## TODO
 

@@ -1,0 +1,44 @@
+result_name: partfield_features/correspondence_demo
+
+continue_ckpt: model/model.ckpt
+
+triplane_channels_low: 128
+triplane_channels_high: 512
+triplane_resolution: 128
+
+vertex_feature: True
+n_point_per_face: 1000
+n_sample_each: 10000
+is_pc: False
+remesh_demo: False
+correspondence_demo: True
+
+preprocess_mesh: True
+
+dataset:
+  type: "Mix"
+  data_path: data/DenseCorr3D
+  train_batch_size: 1
+  val_batch_size: 1
+  train_num_workers: 8
+  all_files:
+    # pairs of example to run correspondence
+    - animals/071b8_toy_animals_017/simple_mesh.obj
+    - animals/bdfd0_toy_animals_016/simple_mesh.obj
+    - animals/2d6b3_toy_animals_009/simple_mesh.obj
+    - animals/96615_toy_animals_018/simple_mesh.obj
+    - chairs/063d1_chair_006/simple_mesh.obj
+    - chairs/bea57_chair_012/simple_mesh.obj
+    - chairs/fe0fe_chair_004/simple_mesh.obj
+    - chairs/288dc_chair_011/simple_mesh.obj
+    # consider decimating animals/../color_mesh.obj yourself for better mesh topology than the provided simple_mesh.obj
+    # (e.g. <50k vertices for functional map efficiency).
+
+loss:
+  triplet: 1.0
+
+use_2d_feat: False
+pvcnn:
+  point_encoder_type: 'pvcnn'
+  z_triplane_channels: 256
+  z_triplane_resolution: 128
