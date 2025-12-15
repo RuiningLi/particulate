@@ -1,7 +1,7 @@
 # Particulate: Feed-Forward 3D Object Articulation
 
 <p align="center">
-<a href=""><img src="https://img.shields.io/badge/arXiv-pending-blue" alt="arXiv"></a>
+<a href="https://arxiv.org/abs/2512.11798"><img src="https://img.shields.io/badge/arXiv-2512.11798-b31b1b" alt="arXiv"></a>
 <a href="https://ruiningli.com/particulate"><img src="https://img.shields.io/badge/Project_Page-green" alt="Project Page"></a>
 <a href='https://huggingface.co/spaces/rayli/particulate/'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20HuggingFace%20-Demo%20-blue'></a>
 </p>
@@ -41,3 +41,14 @@ Extra arguments:
 
 - [ ] Release the Lightwheel benchmark & evaluation code.
 - [ ] Release training and data preprocessing codes.
+
+## Citation
+
+```bibtex
+@article{li2025particulate,
+    title   = {Particulate: Feed-Forward 3D Object Articulation},
+    author  = {Ruining Li and Yuxin Yao and Chuanxia Zheng and Christian Rupprecht and Joan Lasenby and Shangzhe Wu and Andrea Vedaldi},
+    journal = {arXiv preprint arXiv:2512.11798},
+    year    = {2025}
+}
+```
