@@ -326,3 +326,93 @@ def articulate_mesh_parts(
         mesh_parts_articulated[i].vertices = verts_transformed[vert_offset:vert_offset + len(mesh_parts[i].vertices)]
         vert_offset += len(mesh_parts[i].vertices)
     return mesh_parts_articulated
+
+def articulate_bbox(
+    bbox_vertices: np.ndarray,
+    part_ids: np.ndarray,
+    motion_hierarchy: List[Tuple[int, int]],
+    is_part_revolute: np.ndarray,
+    is_part_prismatic: np.ndarray,
+    revolute_plucker: np.ndarray,
+    revolute_range: np.ndarray,
+    prismatic_axis: np.ndarray,
+    prismatic_range: np.ndarray,
+    articulation_state: Union[float, np.ndarray],  # Value between 0 and 1
+    rotation_origin: Optional[np.ndarray] = None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Articulate bbox vertices based on given articulation state.
+    
+    Args:
+        articulation_state: Value between 0 (low limit) and 1 (high limit)
+    
+    Returns:
+        Tuple of (articulated_xyz, articulated_revolute_plucker, articulated_prismatic_axis)
+    """
+    articulated_bbox_vertices = bbox_vertices.copy()
+    articulated_revolute_plucker = revolute_plucker.copy()
+    articulated_prismatic_axis = prismatic_axis.copy()
+    articulated_revolute_range = revolute_range.copy()
+    articulated_prismatic_range = prismatic_range.copy()
+
+    part_transformations = [[] for _ in range(len(np.unique(part_ids)))]
+    if len(motion_hierarchy) == 0:
+        return part_transformations
+    
+    part_order = get_part_order_from_root(motion_hierarchy)
+    # reverse part order
+    part_order = part_order[::-1]
+
+    for pid in part_order:
+        if pid not in part_ids:
+            continue
+        affected_part_ids = get_subtree_part_ids(motion_hierarchy, pid)
+        applied_tramsformation_matrix = np.eye(4, dtype=np.float32)
+        applied_rotation_axis_origin = np.array([np.nan, np.nan, np.nan], dtype=np.float32)
+        applied_transformation_type = "none"
+        children_idxs = affected_part_ids
+
+        if is_part_revolute[pid]:
+            low_limit, high_limit = articulated_revolute_range[pid]
+            part_articulation_state = articulation_state if isinstance(articulation_state, float) else articulation_state[pid]
+            # Interpolate between low and high limits
+            angle = part_articulation_state * (high_limit - low_limit) # check if this is radian 
+            axis, origin = plucker_to_axis_point(articulated_revolute_plucker[pid])
+            transform_matrix = plucker_to_4x4_transform_matrix(articulated_revolute_plucker[pid], angle)
+            rotation_axis_origin = origin if rotation_origin is None else rotation_origin[pid]
+            applied_tramsformation_matrix[:3, :3] = transform_matrix[:3, :3]
+            applied_rotation_axis_origin = rotation_axis_origin
+            applied_transformation_type = "rotation"
+            
+        
+        elif is_part_prismatic[pid]:
+            low_limit, high_limit = prismatic_range[pid]
+            part_articulation_state = articulation_state if isinstance(articulation_state, float) else articulation_state[pid]
+            # Interpolate between low and high limits
+            displacement = part_articulation_state * (high_limit - low_limit)
+            articulated_prismatic_range[pid] = np.array([low_limit - displacement, high_limit - displacement])
+            paxis = articulated_prismatic_axis[pid]
+
+            translation = paxis * displacement
+            applied_tramsformation_matrix[:3, 3] = translation
+            applied_transformation_type = "translation"
+        
+        if not applied_transformation_type == "none":
+            record = {
+                "type": applied_transformation_type,
+                "matrix": applied_tramsformation_matrix,
+                "rotation_axis_origin": applied_rotation_axis_origin
+            }
+            for child_idx in list(set([pid] + children_idxs)):
+                # part_transformations[child_idx].append(record)
+                # turn part_id to index
+                if child_idx not in part_ids:
+                    continue
+                try:
+                    child_idx_index = np.where(np.unique(part_ids) == child_idx)[0][0]
+                    part_transformations[child_idx_index].append(record)
+                except:
+                    breakpoint()
+
+
+    return part_transformations

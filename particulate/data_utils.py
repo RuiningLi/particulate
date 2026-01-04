@@ -33,6 +33,41 @@ def load_obj_raw_preserve(path: Path) -> Tuple[np.ndarray, np.ndarray]:
                                     int(toks[i + 1].split('/')[0]) - 1])
     return np.asarray(verts, float), np.asarray(faces, int)
 
+def get_face_to_bone_mapping(
+    verts_to_bone: np.ndarray,
+    faces: np.ndarray,
+) -> np.ndarray:
+    """
+    Get the face to bone mapping.
+    """
+    face_to_bone = []
+    for face in faces:
+        bone_ids = verts_to_bone[face]
+        if len(np.unique(bone_ids)) != 1:  # All vertices belong to same bone
+            return None
+        face_to_bone.append(bone_ids[0])
+
+    return np.array(face_to_bone)
+
+def get_gt_motion_params(
+    link_axes_plucker: np.ndarray, 
+    link_range: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    # 0: "no motion"; 1: "revolute"; 2: "prismatic"; 3: "both"
+    gt_part_motion_class = (
+        np.any(link_axes_plucker[:, 6:9] != 0, axis=-1).astype(np.int8) * 2 + \
+        np.any(link_axes_plucker[:, 0:3] != 0, axis=-1).astype(np.int8)
+    )
+
+    gt_revolute_plucker = link_axes_plucker[:, :6]
+    gt_prismatic_axis = link_axes_plucker[:, 6:9]
+    gt_revolute_range = link_range[:, :2]
+    gt_prismatic_range = link_range[:, 2:]
+    return (
+        gt_part_motion_class, 
+        gt_revolute_plucker, gt_prismatic_axis, 
+        gt_revolute_range, gt_prismatic_range
+    )
 
 def sharp_sample_pointcloud(mesh, num_points: int = 8192):
     V = mesh.vertices
