@@ -38,7 +38,7 @@ Extra arguments:
 - `no_strict`: By default, the prediction will be post-processed to ensure that each articulated part is a union of different connected components in the original mesh (i.e., no connected components are split across parts). If the input mesh does **not** have clean connected components, please specify `--no_strict`.
 
 ## 💾 Data Preprocessing
-Please refer to `DATA.md`.
+Please refer to [DATA.md](https://github.com/RuiningLi/particulate/blob/main/DATA.md).
 
 ## TODO
 
