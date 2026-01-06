@@ -37,10 +37,14 @@ Extra arguments:
 - `min_part_confidence`: Increasing this value will merge parts that have low confidence scores to other parts. Consider increasing this value if the prediction is over segmented.
 - `no_strict`: By default, the prediction will be post-processed to ensure that each articulated part is a union of different connected components in the original mesh (i.e., no connected components are split across parts). If the input mesh does **not** have clean connected components, please specify `--no_strict`.
 
+## 💾 Data Preprocessing
+Please refer to `DATA.md`.
+
 ## TODO
 
+- [x] Release data preprocessing code.
 - [ ] Release the Lightwheel benchmark & evaluation code.
-- [ ] Release training and data preprocessing codes.
+- [ ] Release training code.
 
 ## Citation
 
