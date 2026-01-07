@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Tuple
+from typing import Tuple
 
 import numpy as np
 
@@ -125,7 +125,9 @@ def sharp_sample_pointcloud(mesh, num_points: int = 8192):
         samples = np.zeros((0, 3), dtype=np.float64)
         normals = np.zeros((0, 3), dtype=np.float64)
         edge_indices = np.zeros((0,), dtype=np.int32)
-        return samples, normals, edge_indices, sharp_edge_faces
+        vertex_ids_a = np.zeros((0,), dtype=np.int32)
+        vertex_ids_b = np.zeros((0,), dtype=np.int32)
+        return samples, normals, edge_indices, sharp_edge_faces, vertex_ids_a, vertex_ids_b
 
     sharp_verts_a = V[edge_a]
     sharp_verts_b = V[edge_b]
@@ -138,14 +140,16 @@ def sharp_sample_pointcloud(mesh, num_points: int = 8192):
     index = np.searchsorted(weights.cumsum(), random_number)
     samples = w * sharp_verts_a[index] + (1 - w) * sharp_verts_b[index]
     normals = sharp_edge_normals[index]
-    return samples, normals, index, sharp_edge_faces
+    vertex_ids_a = edge_a[index]
+    vertex_ids_b = edge_b[index]
+    return samples, normals, index, sharp_edge_faces, vertex_ids_a, vertex_ids_b
 
 
 def sample_points(mesh, num_points, sharp_point_ratio, at_least_one_point_per_face=False):
     """Sample points from mesh using sharp edge and uniform sampling."""
     num_points_sharp_edges = int(num_points * sharp_point_ratio)
     num_points_uniform = num_points - num_points_sharp_edges
-    points_sharp, normals_sharp, edge_indices, sharp_edge_faces = sharp_sample_pointcloud(mesh, num_points_sharp_edges)
+    points_sharp, normals_sharp, edge_indices, sharp_edge_faces, _, _ = sharp_sample_pointcloud(mesh, num_points_sharp_edges)
 
     # If no sharp edges were found, sample all points uniformly
     if len(points_sharp) == 0 and sharp_point_ratio > 0:
