@@ -40,10 +40,73 @@ Extra arguments:
 ## 💾 Data Preprocessing
 Please refer to [DATA.md](https://github.com/RuiningLi/particulate/blob/main/DATA.md).
 
+## 🔎 Evaluation 
+
+Example of evaluation script: 
+```
+python evaluate.py 
+      --gt_dir dataset/Lightwheel_uniform-100k
+      --output_dir eval_result/
+      --result_dir result_dir/
+      --result_type particulate
+```
+
+The evaluator expects:
+
+- gt_dir: directory of ground-truth `.npz` files named `{model_name}.npz`. 
+
+- output_dir: per-sample outputs and overall summaries:
+  - Per-sample: `<sample_name>_pred_eval.json`; meshes when enabled: `<sample_name>_pred_{original,low,high}.obj`.
+    - With `--save_pcd_gt`, also `<sample_name>_gt_{original,low,high}.obj`.
+  - Overall: saved next to `output_dir` as `<basename(output_dir)>_eval_overall.json`, give the metric averaged over all assets. 
+
+- result_dir: directory of prediction `.npz` files that follow the meta schema. If you first need to convert meshes to point clouds with articulation metadata, see Resampling below.
+
+- result_type: custom prediction or <em>particulate</em> prediction
+
+For details of evaluation data format, please refer to [DATA.md](https://github.com/RuiningLi/particulate/blob/main/DATA.md).
+
+<details>
+<summary>
+We provide options to sample points cloud on given mesh(.obj), by using the commands: </summary>
+
+<a id="resample"></a>
+
+```
+python evaluate.py 
+      --gt_dir dataset/Lightwheel_uniform-100k \
+      --output_dir eval_result/ \
+      --result_dir result_dir/ \
+      --result_type custom \
+      --resample_points \
+      --meta_dir dataset/custom_data/ \
+```
+
+- meta_dir: directory containing the mesh/point cloud and articulation information per asset. 
+
+Where:
+```
+|
+|-- meta_dir
+|   |-- Asset_name1
+|   |   |-- original.obj
+|   |   |-- meta.npz
+|   |
+|   |-- Asset_name2
+|   |   |-- original.obj
+|   |   |-- meta.npz
+|   |
+|   ...
+```
+
+- original.obj: triangle mesh used for uniform surface sampling. 
+- meta.npz: contains `vert_to_bone` (|V|, ), which indicate the part_id for each face in the mesh. The motion_hierarchy, is_part_revolute, is_part_prismatic, revolute_plucker, revolute_range, prismatic_axis, prismatic_range, are also required. They are the same as the `{Asset_name}.npz` in [DATA.md](https://github.com/RuiningLi/particulate/blob/main/DATA.md).
+</details>
+
 ## TODO
 
 - [x] Release data preprocessing code.
-- [ ] Release the Lightwheel benchmark & evaluation code.
+- [x] Release the Lightwheel benchmark & evaluation code.
 - [ ] Release training code.
 
 ## Citation

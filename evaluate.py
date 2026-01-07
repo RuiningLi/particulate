@@ -111,14 +111,12 @@ def main(
     output_path.mkdir(parents=True, exist_ok=True)
     
     eval_results = []
-
+    breakpoint()
     if result_type == "particulate":
-        pred_files = glob.glob(os.path.join(result_dir,"**", "refined_strict.npz"))
-        gt_file = os.path.join(gt_dir, "*.npz")
+        pred_files = glob.glob(os.path.join(result_dir, "*.npz"))
     elif result_type == "custom":
         # run the resample_points_release.py to resample points on the mesh
         pred_files = glob.glob(os.path.join(result_dir, "*.npz"))
-        gt_file = os.path.join(gt_dir, "*.npz")
 
     num_failed = 0
     for i, pred_file in enumerate(tqdm(pred_files, desc="Processing samples")):
@@ -146,8 +144,8 @@ def main(
             }
 
         elif result_type == "particulate":
-            sample_name = pred_file.split("/")[-2]
-            model_name = pred_file.split("/")[-2].split("_")[0]
+            sample_name = pred_file.split("/")[-1]
+            model_name = sample_name.split(".")[0]
             try:
                 gt_file = os.path.join(gt_dir, f"{model_name}.npz")
                 gt_sample = np.load(gt_file)
