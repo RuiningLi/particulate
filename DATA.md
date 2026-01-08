@@ -90,11 +90,18 @@ The example of the file structure is:
 #### Plücker coordinate format 
   - For revolute axes, we represent a 3D line (joint axis) with 6 floats `[l_x, l_y, l_z, m_x, m_y, m_z]` where:
     - `l` is the direction vector of the axis
-    - `m` is the moment vector, defined as `m = p × l` for any point `p` on the line
+    - `m` is the moment vector, defined as `m = l × p` for any point `p` on the line
 
 
 To convert [Training Data](#training-data) to [Evaluation Data](#evaluation-data), run:
 
 ```bash
 python -m particulate.convert_train_to_eval --input_file path/to/the/preprocessed/file --output_file path/to/the/output/npz/file.npz 
+```
+
+For evaluation, we cache points and relevant metadata for efficient data loading. In our evaluation, we cache 100k points uniformly sampled from the surface of each mesh. 
+To do this for a preprocessed output folder, use the `cache_gt.py` script under `particulate/data`:
+
+```bash
+python -m particulate.data.cache_gt  --root_dir path/to/all/preprocessed/folders/ --output_dir path/to/the/output/dir/ 
 ```
