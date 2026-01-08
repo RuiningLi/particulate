@@ -4,35 +4,7 @@ import numpy as np
 import glob
 from typing import Tuple
 import argparse
-
-def get_gt_motion_params(
-    link_axes_plucker: np.ndarray, 
-    link_range: np.ndarray
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Extract motion parameters from link_axes_plucker and link_range.
-    
-    Returns:
-        gt_part_motion_class: 0="no motion", 1="revolute", 2="prismatic", 3="both"
-        gt_revolute_plucker: float32[P, 6]
-        gt_prismatic_axis: float32[P, 3]
-        gt_revolute_range: float32[P, 2]
-        gt_prismatic_range: float32[P, 2]
-    """
-    # 0: "no motion"; 1: "revolute"; 2: "prismatic"; 3: "both"
-    gt_part_motion_class = (
-        np.any(link_axes_plucker[:, 6:9] != 0, axis=-1).astype(np.int8) * 2 + \
-        np.any(link_axes_plucker[:, 0:3] != 0, axis=-1).astype(np.int8)
-    )
-
-    gt_revolute_plucker = link_axes_plucker[:, :6]
-    gt_prismatic_axis = link_axes_plucker[:, 6:9]
-    gt_revolute_range = link_range[:, :2]
-    gt_prismatic_range = link_range[:, 2:]
-    return (
-        gt_part_motion_class, 
-        gt_revolute_plucker, gt_prismatic_axis, 
-        gt_revolute_range, gt_prismatic_range
-    )
+from particulate.data_utils import get_gt_motion_params
 
 def sample_points_with_part_coverage(
     points: np.ndarray,
@@ -157,6 +129,7 @@ def main():
     # Configuration
     input_file = args.input_file
     output_file = args.output_file
+    
             
     # Convert
     convert_to_eval_format(input_file, output_file, num_points=args.num_points, seed=args.seed)

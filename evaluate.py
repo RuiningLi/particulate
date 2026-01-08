@@ -111,7 +111,6 @@ def main(
     output_path.mkdir(parents=True, exist_ok=True)
     
     eval_results = []
-    breakpoint()
     if result_type == "particulate":
         pred_files = glob.glob(os.path.join(result_dir, "*.npz"))
     elif result_type == "custom":
@@ -166,26 +165,16 @@ def main(
         else:
             raise ValueError(f"Invalid result type: {result_type}")
 
-
-        gt_link_axes_plucker = gt_sample['link_axes_plucker']
-        gt_link_range = gt_sample['link_range']
-        (
-            gt_part_motion_class, 
-            gt_revolute_plucker, gt_prismatic_axis, 
-            gt_revolute_range, gt_prismatic_range
-        ) = get_gt_motion_params(gt_link_axes_plucker, gt_link_range)
-        is_part_revolute_gt = (gt_part_motion_class == 1) | (gt_part_motion_class == 3)
-        is_part_prismatic_gt = (gt_part_motion_class == 2) | (gt_part_motion_class == 3)
         gt = {
-            'part_ids': gt_sample['point_to_bone'],
+            'part_ids': gt_sample['part_ids'],
             'xyz': gt_sample['points'],
-            'motion_hierarchy': gt_sample['bone_structure'],
-            'is_part_revolute': is_part_revolute_gt,
-            'is_part_prismatic':is_part_prismatic_gt,
-            'revolute_plucker': gt_revolute_plucker,
-            'revolute_range': gt_revolute_range,
-            'prismatic_axis': gt_prismatic_axis,
-            'prismatic_range': gt_prismatic_range,
+            'motion_hierarchy': gt_sample['motion_hierarchy'],
+            'is_part_revolute': gt_sample['is_part_revolute'],
+            'is_part_prismatic':gt_sample['is_part_prismatic'],
+            'revolute_plucker': gt_sample['revolute_plucker'],
+            'revolute_range': gt_sample['revolute_range'],
+            'prismatic_axis': gt_sample['prismatic_axis'],
+            'prismatic_range': gt_sample['prismatic_range'],
         }
 
 
