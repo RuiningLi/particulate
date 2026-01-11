@@ -1,17 +1,9 @@
 import numpy as np
 from typing import List, Mapping, Tuple, Dict
-from scipy.spatial.distance import cdist
-import open3d as o3d
-import math
-from pathlib import Path
 from scipy.optimize import linear_sum_assignment
 import torch
-from scipy.spatial import cKDTree
 
 from particulate.articulation_utils import articulate_points, articulate_bbox
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 from pytorch3d.loss import chamfer_distance
 
 
@@ -871,108 +863,3 @@ def evaluate_articulate_result(
             float(mIoU) for mIoU in per_state_mIoU_distances_nopunish
         ]
     }, revolute_range_pred, prismatic_range_pred
-
-    
-def set_perspective_no_enum(cam, fov_deg, W, H, near, far, vertical_fov=True):
-    aspect = float(W) / float(H)
-    f = math.radians(float(fov_deg))
-    if vertical_fov:
-        fy = (H/2.0) / math.tan(f/2.0)
-        fx = fy * aspect
-    else:  # interpret fov as horizontal
-        fx = (W/2.0) / math.tan(f/2.0)
-        fy = fx / aspect
-    cx, cy = (W-1)/2.0, (H-1)/2.0
-    K = np.array([[fx, 0.0, cx],
-                  [0.0, fy, cy],
-                  [0.0, 0.0, 1.0]], dtype=np.float64)
-    cam.set_projection(K, float(near), float(far), float(W), float(H))
-
-def render_obj_views(
-    obj_path: str,
-    out_dir: str = "renders_o3d",
-    W: int = 1024, H: int = 1024,
-    fov_deg: float = 60.0,
-    az_step: int = 5, elevations=(0, 45, -45),
-    bg=(1.0, 1.0, 1.0, 1.0),        # RGBA background (white)
-):
-    out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
-
-    # Load mesh (MTL/texture respected; vertex colors used if present)
-    mesh = o3d.io.read_triangle_mesh(obj_path, enable_post_processing=True)
-    # apply point transformation to the mesh
-    def point_transformation(ps):
-        # rotate 90 degrees around x axis
-        R = np.array([
-        [1, 0, 0],
-        [0, 0, -1],
-        [0, 1, 0]
-        ], dtype=np.float64)
-        
-        return np.matmul(ps, R)
-        
-    mesh.vertices = o3d.utility.Vector3dVector(point_transformation(np.asarray(mesh.vertices)))
-    mesh.vertex_normals = o3d.utility.Vector3dVector(point_transformation(np.asarray(mesh.vertex_normals)))
-
-    
-    if not mesh.has_triangles():
-        raise ValueError("OBJ has no faces. If this is a point cloud, first convert to a mesh or use PointCloud + renderer.")
-    if not mesh.has_vertex_normals():
-        mesh.compute_vertex_normals()
-
-    # Offscreen renderer
-    renderer = o3d.visualization.rendering.OffscreenRenderer(W, H)
-    scene = renderer.scene
-    scene.set_background(bg)
-
-    # Lighting
-    dir_vec = np.array([0.577, 0.577, 0.577], dtype=np.float32)
-    sun_col = np.array([1.0, 1.0, 1.0], dtype=np.float32)
-    scene.scene.set_sun_light(dir_vec, sun_col, 60000.0)
-    scene.scene.enable_sun_light(True)
-
-    # Material: lit (uses vertex colors / textures)
-    mat = o3d.visualization.rendering.MaterialRecord()
-    mat.shader = "defaultLit"
-
-    # Center & scale
-    bbox = mesh.get_axis_aligned_bounding_box()
-    center = bbox.get_center()
-    extent = np.linalg.norm(bbox.get_extent())
-    if extent < 1e-8:
-        extent = 1.0
-    radius = 1.5 * extent  # camera distance
-
-    scene.add_geometry("mesh", mesh, mat)
-
-    # Camera
-    aspect = W / H
-    cam = scene.camera
-    near = 0.01 * extent
-    far  = 5.0 * radius
-    set_perspective_no_enum(cam, fov_deg, W, H, near, far)
-
-    def eye_on_sphere(az_deg, el_deg, r):
-        az, el = math.radians(az_deg), math.radians(el_deg)
-        return center + r * np.array([
-            math.cos(el) * math.cos(az),
-            math.sin(el),
-            math.cos(el) * math.sin(az),
-        ], dtype=np.float32)
-    img_ls = []
-    if isinstance(elevations, int):
-        views = [(az, elevations) for az in range(0, 360, az_step)]
-    else:
-        views = [(az, el) for az in range(0, 360, az_step) for el in elevations]
-    for i, (az, el) in enumerate(views):
-        eye = eye_on_sphere(az, el, radius)
-        up = np.array([0, 1, 0], dtype=np.float32)
-        cam.look_at(center, eye, up)
-
-        # RGB
-        img = renderer.render_to_image()
-        o3d.io.write_image(str(out / f"rgb_{i:03d}_az{az}_el{el}.png"), img, 9)
-        img_ls.append(img)
-
-    print(f"Saved {len(views)} views to {out.resolve()}")
-    return img_ls

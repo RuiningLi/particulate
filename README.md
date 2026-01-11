@@ -16,7 +16,7 @@ Particulate is a feed-forward approach that, given a single static 3D mesh of an
 
 ## 🔧 Installation
 Our implementation is tested on pytorch==2.4.0 with cuda 12.4 on Ubuntu 22.04. 
-```
+```bash
 conda create -n particulate python=3.10
 conda activate particulate
 pip install -r requirements.txt
@@ -25,7 +25,7 @@ pip install -r requirements.txt
 ## 🚀 Inference
 To use our model to predict the articulated structure of a custom 3D model (alternatively, you can try our [demo](https://huggingface.co/spaces/rayli/particulate) on HuggingFace without local setup):
 
-```
+```bash
 python infer.py --input_mesh ./hunyuan3d-examples/foldingchair.glb
 ```
 
@@ -42,65 +42,42 @@ Please refer to [DATA.md](https://github.com/RuiningLi/particulate/blob/main/DAT
 
 ## 🔎 Evaluation 
 
-Example of evaluation script: 
-```
-python evaluate.py 
-      --gt_dir dataset/Lightwheel_uniform-100k
-      --output_dir eval_result/
-      --result_dir result_dir/
-      --result_type particulate
+To perform quantitative evaluation with our proposed protocol, during inference, enable `--eval` flag to save the results:
+
+```bash
+python infer.py --input_mesh /path/to/an/asset/in/the/evaluation/set.obj --eval
 ```
 
-The evaluator expects:
+This will save a `pred.obj` and a `pred.npz` under `$output_dir/eval`.
 
-- gt_dir: directory of ground-truth `.npz` files named `{model_name}.npz`. 
+Then, use the `cache_gt.py` script under `particulate/data` to convert the ground-truth asset (`.urdf` or `.usd`) to the same format:
 
-- output_dir: per-sample outputs and overall summaries:
-  - Per-sample: `<sample_name>_pred_eval.json`; meshes when enabled: `<sample_name>_pred_{original,low,high}.obj`.
-    - With `--save_pcd_gt`, also `<sample_name>_gt_{original,low,high}.obj`.
-  - Overall: saved next to `output_dir` as `<basename(output_dir)>_eval_overall.json`, give the metric averaged over all assets. 
+```bash
+TODO
+```
 
-- result_dir: directory of prediction `.npz` files that follow the meta schema. If you first need to convert meshes to point clouds with articulation metadata, see Resampling below.
+With the GT and predicted files ready, we can obtain the evaluation results by:
 
-- result_type: custom prediction or <em>particulate</em> prediction
-
-For details of evaluation data format, please refer to [DATA.md](https://github.com/RuiningLi/particulate/blob/main/DATA.md).
+```bash
+TODO
+```
 
 <details>
-<summary>
-We provide options to sample points cloud on given mesh(.obj), by using the commands: </summary>
+<summary>Step-by-step guide to reproduce our results on PartNet-Mobility test set</summary>
 
-<a id="resample"></a>
+Assuming the URDF assets in the test set is located at `$PARTNET_TEST_SET/*/mobility.urdf`, follow the following steps:
 
-```
-python evaluate.py 
-      --gt_dir dataset/Lightwheel_uniform-100k \
-      --output_dir eval_result/ \
-      --result_dir result_dir/ \
-      --result_type custom \
-      --resample_points \
-      --meta_dir dataset/custom_data/ \
-```
+TODO
 
-- meta_dir: directory containing the mesh/point cloud and articulation information per asset. 
+</details>
 
-Where:
-```
-|
-|-- meta_dir
-|   |-- Asset_name1
-|   |   |-- original.obj
-|   |   |-- meta.npz
-|   |
-|   |-- Asset_name2
-|   |   |-- original.obj
-|   |   |-- meta.npz
-|   |
-|   ...
-```
+<details>
+<summary>Step-by-step guide to reproduce our results on Lightwheel test set</summary>
 
-- original.obj: triangle mesh used for uniform surface sampling. 
-- meta.npz: contains `vert_to_bone` (|V|, ), which indicate the part_id for each face in the mesh. The motion_hierarchy, is_part_revolute, is_part_prismatic, revolute_plucker, revolute_range, prismatic_axis, prismatic_range, are also required. They are the same as the `{Asset_name}.npz` in [DATA.md](https://github.com/RuiningLi/particulate/blob/main/DATA.md).
+Assuming the USD assets in the test set is located at `$LIGHTWHEEL_TEST_SET/{object_identifier}/{object_identifier}.usd`, follow the following steps:
+
+TODO
+
 </details>
 
 ## TODO
