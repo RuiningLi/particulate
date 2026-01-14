@@ -158,12 +158,7 @@ def sample_points(mesh, num_points, sharp_point_ratio, at_least_one_point_per_fa
 
     if at_least_one_point_per_face:
         num_faces = len(mesh.faces)
-        if num_points_uniform < num_faces:
-            raise ValueError(
-                "Unable to sample at least one point per face: "
-                f"{num_faces} faces > {num_points_uniform}"
-            )
-        
+
         face_perm = np.random.permutation(num_faces)
         points_per_face = []
         for face_idx in face_perm:

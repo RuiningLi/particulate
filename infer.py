@@ -27,6 +27,7 @@ from partfield_utils import get_partfield_model, obtain_partfield_feats
 from yacs.config import CfgNode
 torch.serialization.add_safe_globals([CfgNode])
 
+torch.random.manual_seed(42)
 
 DATA_CONFIG = {
     'sharp_point_ratio': 0.5,

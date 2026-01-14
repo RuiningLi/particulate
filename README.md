@@ -45,29 +45,64 @@ Please refer to [DATA.md](https://github.com/RuiningLi/particulate/blob/main/DAT
 To perform quantitative evaluation with our proposed protocol, during inference, enable `--eval` flag to save the results:
 
 ```bash
-python infer.py --input_mesh /path/to/an/asset/in/the/evaluation/set.obj --eval
+python infer.py --input_mesh /path/to/an/asset/in/the/evaluation/set.obj --eval --output_dir /output/path/for/infer/asset_name/ --dir
 ```
 
-This will save a `pred.obj` and a `pred.npz` under `$output_dir/eval`.
+This will save a `pred.obj` and a `pred.npz` under `$output_dir/eval`. Run inference for all assets. 
 
-Then, use the `cache_gt.py` script under `particulate/data` to convert the ground-truth asset (`.urdf` or `.usd`) to the same format:
+Then, use the `cache_gt.py` script under `particulate/data` to convert all the preprocessed ground-truth assets(refer to [DATA.md](https://github.com/RuiningLi/particulate/blob/main/DATA.md)) to the same format, serve as ground truth for later evaluation:
 
 ```bash
-TODO
+python -m particulate.data.cache_gt --root_dir  /path/to/directory/of/preprocessed/assets/ --output_dir /path/to/save/cached/ground/truths/
 ```
 
 With the GT and predicted files ready, we can obtain the evaluation results by:
 
 ```bash
-TODO
+python evaluate.py --gt_dir /directory/of/all/preprocessed/gt/file/ --result_dir /directory/of/all/prediction/  --output_dir /directory/of/evaluation/output/
 ```
 
+Where:
+- **`--gt_dir`**: directory produced by `python -m particulate.data.cache_gt ...` containing cached GT `.npz` files named `<asset_id>.npz` (e.g. `41086.npz`).
+- **`--result_dir`**: root directory that contains your inference outputs for many assets. `evaluate.py` searches for prediction meshes under `**/eval/*.obj` and expects each asset to have an `eval/` folder (e.g. `/results/41086/eval/pred.obj` + `/results/41086/pred.npz`).
+- **`--output_dir`**: directory where evaluation JSON files will be written (default: `eval_result`).
+
 <details>
-<summary>Step-by-step guide to reproduce our results on PartNet-Mobility test set</summary>
+<summary>Step-by-step guide to reproduce our results on PartNet-Mobility/Lightwheel test set</summary>
 
-Assuming the URDF assets in the test set is located at `$PARTNET_TEST_SET/*/mobility.urdf`, follow the following steps:
+Preprocess all URDF/USD assets, if you are working on PartNet-Mobility, we assume the URDF assets in the test set is located at `$PARTNET_TEST_SET/*/mobility.urdf`. 
 
-TODO
+```
+python -m particulate.data.process_parallel "$PARTNET_TEST_SET/*/mobility.urdf" /path/to/directory/of/preprocessed/assets/ --dataset partnet-mobility 
+```
+
+`cache_gt.py` turns the preprocessed assets into cached GT `.npz` files (one per asset) used by `evaluate.py`.
+
+```
+python -m particulate.data.cache_gt --root_dir /path/to/directory/of/preprocessed/assets/ --output_dir /path/to/save/cached/ground/truths/ 
+```
+
+Run `infer.py` for every test asset mesh and save predictions in a consistent directory structure.
+
+```
+BASE_OUT=/directory/of/all/prediction/
+
+find /path/to/directory/of/preprocessed/assets/ -name '*.obj' -print0 |
+while IFS= read -r -d '' mesh; do
+  subdir=$(basename "$(dirname "$mesh")")
+  python infer.py \
+    --input_mesh "$mesh" \
+    --eval \
+    --output_dir "$BASE_OUT/$subdir" \
+    --up_dir Z
+done
+```
+
+Then run evaluation:
+
+```
+python evaluate.py --gt_dir /path/to/save/cached/ground/truths/ --result_dir /directory/of/all/prediction/  --output_dir /directory/of/evaluation/output/
+```
 
 </details>
 
@@ -76,7 +111,37 @@ TODO
 
 Assuming the USD assets in the test set is located at `$LIGHTWHEEL_TEST_SET/{object_identifier}/{object_identifier}.usd`, follow the following steps:
 
-TODO
+```
+python -m particulate.data.process_parallel "/$LIGHTWHEEL_TEST_SET/*/*.usd" /path/to/directory/of/preprocessed/assets/ --dataset lightwheel
+```
+
+`cache_gt.py` turns the preprocessed assets into cached GT `.npz` files (one per asset) used by `evaluate.py`.
+
+```
+python -m particulate.data.cache_gt --root_dir /path/to/directory/of/preprocessed/assets/ --output_dir /path/to/save/cached/ground/truths/ 
+```
+
+Run `infer.py` for every test asset mesh and save predictions in a consistent directory structure.
+
+```
+BASE_OUT=/directory/of/all/prediction/
+
+find /path/to/directory/of/preprocessed/assets/ -name '*.obj' -print0 |
+while IFS= read -r -d '' mesh; do
+  subdir=$(basename "$(dirname "$mesh")")
+  python infer.py \
+    --input_mesh "$mesh" \
+    --eval \
+    --output_dir "$BASE_OUT/$subdir" \
+    --up_dir Z
+done
+```
+
+Then run evaluation:
+
+```
+python evaluate.py --gt_dir /path/to/save/cached/ground/truths/ --result_dir /directory/of/all/prediction/  --output_dir /directory/of/evaluation/output/
+```
 
 </details>
 
