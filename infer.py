@@ -301,9 +301,34 @@ def main(args):
         new_face_part_ids = face_part_ids.copy()
         for idx, part_id in enumerate(unique_part_ids):
             new_face_part_ids[face_part_ids == part_id] = idx
-        new_motion_hierarchy = [
-            (old_part_id_to_new_part_id[p], old_part_id_to_new_part_id[c]) for p, c in motion_hierarchy
-        ]
+        
+        # Build induced tree: skip removed parts and connect available ancestors to descendants.
+        available_parts = set(old_part_id_to_new_part_id.keys())
+        children_map = {}
+        for p, c in motion_hierarchy:
+            if p not in children_map:
+                children_map[p] = []
+            children_map[p].append(c)
+        
+        def get_available_descendants(node):
+            """Find all direct available descendants, skipping unavailable nodes."""
+            if node not in children_map:
+                return []
+            descendants = []
+            for child in children_map[node]:
+                if child in available_parts:
+                    descendants.append(child)
+                else:
+                    # Recursively get descendants of unavailable child.
+                    descendants.extend(get_available_descendants(child))
+            return descendants
+        
+        new_motion_hierarchy = []
+        for parent in available_parts:
+            for child in get_available_descendants(parent):
+                new_motion_hierarchy.append(
+                    (old_part_id_to_new_part_id[parent], old_part_id_to_new_part_id[child])
+                )
 
         np.savez(os.path.join(eval_result_output_dir, "pred.npz"),
             face_part_ids=new_face_part_ids,
