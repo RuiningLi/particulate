@@ -1,4 +1,5 @@
 import argparse
+from ast import GtE
 import glob
 import json
 import os
@@ -30,8 +31,8 @@ def evaluate_inference_results(
 
     """Evaluate inference results."""
     eval_results, revolute_range_pred, prismatic_range_pred = evaluate_articulate_result(
-        xyz=results['xyz'],
-        xyz_gt=gt['xyz'],
+        xyz=results['points'],
+        xyz_gt=gt['points'],
         part_ids_pred=results['part_ids'],
         part_ids_gt=gt['part_ids'],
         motion_hierarchy_pred=results['motion_hierarchy'],
@@ -54,47 +55,45 @@ def evaluate_inference_results(
     json.dump(eval_results, open(output_path.parent / f"{output_path.stem}_eval.json", "w"), indent=4)
     return eval_results, revolute_range_pred, prismatic_range_pred
 
-def process_custom_prediction(
-    meta_dir: str,
+def process_prediction(
+    obj_file: str,
     num_points: int,
-    save_dir: str,
+    cache_dir: Optional[str] = None,
 ):
-    save_dir = Path(save_dir)
-    save_dir.mkdir(parents=True, exist_ok=True)
-    obj_files = glob.glob(os.path.join(meta_dir, "**", "original.obj"))
-    for obj_file in obj_files:
-        category_name = obj_file.split("/")[-2]
-        if os.path.exists(os.path.join(save_dir, f"{category_name}.npz")):
-            continue
-        meta_path = obj_file.replace("original.obj", "meta.npz")
-        meta = np.load(meta_path)
-        face_part_id = meta["vert_to_bone"]
-        verts, faces = load_obj_raw_preserve(Path(obj_file))
-        mesh = trimesh.Trimesh(verts, faces, process=False)
-        # Sample points on the surface with normals
-        points_uniform, face_indices = mesh.sample(num_points, return_index=True)
-        face_to_bone = get_face_to_bone_mapping(face_part_id, faces)
-        point_to_bone_uniform = face_to_bone[face_indices]
-        np.savez(os.path.join(save_dir, f"{category_name}.npz"),
-            points=points_uniform,
-            point_to_bone=point_to_bone_uniform,
-            motion_hierarchy=meta['motion_hierarchy'],
-            is_part_revolute=meta['is_part_revolute'],
-            is_part_prismatic=meta['is_part_prismatic'],
-            revolute_plucker=meta['revolute_plucker'],
-            revolute_range=meta['revolute_range'],
-            prismatic_axis=meta['prismatic_axis'],
-            prismatic_range=meta['prismatic_range'],
-            face_indices=face_indices,
-        )
-    print(f"Processed {len(obj_files)} objects")
+    if cache_dir is not None:
+        cache_file = os.path.join(cache_dir, f"{obj_file.split('/')[-3]}.npz")
 
-def main(
+    meta_path = obj_file.replace("pred.obj", "pred.npz")
+    meta = np.load(meta_path)
+    face_part_id = meta["face_part_ids"]
+    verts, faces = load_obj_raw_preserve(Path(obj_file))
+    mesh = trimesh.Trimesh(verts, faces, process=False)
+    # Sample points on the surface with normals
+    points_uniform, face_indices = mesh.sample(num_points, return_index=True)
+    part_ids = face_part_id[face_indices]
+    results = {
+        "points": points_uniform,
+        "part_ids": part_ids,
+        "motion_hierarchy": meta['motion_hierarchy'],
+        "is_part_revolute": meta['is_part_revolute'],
+        "is_part_prismatic": meta['is_part_prismatic'],
+        "revolute_plucker": meta['revolute_plucker'],
+        "revolute_range": meta['revolute_range'],
+        "prismatic_axis": meta['prismatic_axis'],
+        "prismatic_range": meta['prismatic_range'],
+        "face_indices": face_indices,
+    }
+    if cache_dir is not None:
+        np.savez(cache_file, **results)
+    return results
+
+def evaluate(
     gt_dir: str,
     result_dir: str,
     output_dir: str = "./inference_results",
     device: str = "cuda",
-    result_type: str = "particulate"
+    num_points: int = 100000,
+    cache_dir: Optional[str] = None,
 ):
     """Main inference function."""
     # Validate device
@@ -105,68 +104,33 @@ def main(
     # Create output directory
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    
+
     eval_results = []
-    pred_files = glob.glob(os.path.join(result_dir, "*.npz"))
+    obj_files = glob.glob(os.path.join(result_dir, "**", "eval","*.obj"))
+    for i, obj_file in enumerate(tqdm(obj_files, desc="Processing samples")):
 
-    for i, pred_file in enumerate(tqdm(pred_files, desc="Processing samples")):
-        # Get sample
+        results = process_prediction(obj_file=obj_file, num_points=num_points, cache_dir=cache_dir)
 
-        if result_type == "custom":
-            sample_name = pred_file.split("/")[-1].split(".")[0]
-            model_name = sample_name
-            try:
-                gt_file = os.path.join(gt_dir, f"{model_name}.npz")
-                gt_sample = np.load(gt_file)
-                pred = np.load(pred_file)
-            except:
-                continue
-            results = {
-                'xyz': pred['points'],
-                'part_ids': pred['point_to_bone'],
-                'motion_hierarchy': pred['motion_hierarchy'],
-                'is_part_revolute': pred['is_part_revolute'],
-                'is_part_prismatic': pred['is_part_prismatic'],
-                'revolute_plucker': pred['revolute_plucker'],
-                'revolute_range': pred['revolute_range'],
-                'prismatic_axis': pred['prismatic_axis'],
-                'prismatic_range': pred['prismatic_range'],
-            }
+        # check whether scaled 
 
-        elif result_type == "particulate":
-            sample_name = pred_file.split("/")[-1]
-            model_name = sample_name.split(".")[0]
-            try:
-                gt_file = os.path.join(gt_dir, f"{model_name}.npz")
-                gt_sample = np.load(gt_file)
-                pred = np.load(pred_file)
-            except:
-                continue
-            results = {
-                'xyz': pred['points'],
-                'part_ids': pred['part_ids'],
-                'motion_hierarchy': pred['motion_hierarchy'],
-                'is_part_revolute': pred['is_part_revolute'],
-                'is_part_prismatic': pred['is_part_prismatic'],
-                'revolute_plucker': pred['revolute_plucker'],
-                'revolute_range': pred['revolute_range'],
-                'prismatic_axis': pred['prismatic_axis'],
-                'prismatic_range': pred['prismatic_range'],
-            }
-        else:
-            raise ValueError(f"Invalid result type: {result_type}")
+        if not np.all(np.abs(results['points']) <= 0.5+1e-3):
+            breakpoint()
+        min_x, min_y, min_z = np.min(results['points'], axis=0)
+        max_x, max_y, max_z = np.max(results['points'], axis=0)
+        if not (np.abs(min_x + max_x)/2 < 1e-2 and np.abs(min_y + max_y)/2 < 1e-2 and np.abs(min_z + max_z)/2 < 1e-2):
+            breakpoint()
+        if not np.max(np.abs(results['points']) >= 0.5-1e-3):
+            breakpoint()
 
-        gt = {
-            'part_ids': gt_sample['part_ids'],
-            'xyz': gt_sample['points'],
-            'motion_hierarchy': gt_sample['motion_hierarchy'],
-            'is_part_revolute': gt_sample['is_part_revolute'],
-            'is_part_prismatic':gt_sample['is_part_prismatic'],
-            'revolute_plucker': gt_sample['revolute_plucker'],
-            'revolute_range': gt_sample['revolute_range'],
-            'prismatic_axis': gt_sample['prismatic_axis'],
-            'prismatic_range': gt_sample['prismatic_range'],
-        }
+        sample_name = obj_file.split("/")[-3]
+        try:
+            gt_file = os.path.join(gt_dir, f"{sample_name}.npz")
+            gt = np.load(gt_file)
+
+        except:
+            # raise ValueError(f"GT file {gt_file} not found")
+            print(f"GT file {gt_file} not found")
+            continue
 
         # Save results
         output_file = output_path / f"{sample_name}_pred"
@@ -208,27 +172,19 @@ def main(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run inference on Articulate3D model")
-    parser.add_argument("--gt_dir", type=str, default="../data/Lightwheel/all-uniform-100k", help="Path to gt pcd directory")
-    parser.add_argument("--output_dir", type=str, default="inference_results", help="Evaluation results output directory")
-    parser.add_argument("--meta_dir", type=str, default=None, help="Path to meta directory")
-    parser.add_argument("--asset_type", type=str, default="obj", choices=["obj", "npy"], help="Asset type in mesh or points cloud")
-    parser.add_argument("--result_dir", type=str, default="../data/release_converted_results", help="Path to converted result npz directory")
+    parser.add_argument("--gt_dir", type=str, default="dataset/Lightwheel_uniform-100k", help="Path to gt pcd directory")
+    parser.add_argument("--result_dir", type=str, required=True, help="Path to result directory")
+    parser.add_argument("--output_dir", type=str, default="eval_result", help="Evaluation results output directory")
     parser.add_argument("--device", type=str, default="cuda", help="Device to use")
-    parser.add_argument("--resample_points", action="store_true", help="Resample points from the mesh")
-    parser.add_argument("--num_points", type = int, default = 100000, help = "Number of points to sample from the mesh")
-    parser.add_argument("--result_type", type=str, default="particulate", choices=["particulate", "custom"], help="Result type")
+    parser.add_argument("--num_points", type = int, default =100000, help = "Number of points to sample from the mesh")
+    parser.add_argument("--cache_dir", type=str, default=None, help="Path to cache directory, if not provided, will process all obj files but not cache them")
     args = parser.parse_args()
 
-    if args.resample_points:
-        assert args.asset_type == "obj", "Only obj asset type is supported for resampling points"
-        assert args.meta_dir is not None, "Meta directory is required for resampling points"
-        print(f"Resampling points from the mesh... Saving resampled points to {args.result_dir}")
-        process_custom_prediction(meta_dir=args.meta_dir, num_points=args.num_points, save_dir=args.result_dir)
-
-    main(
+    evaluate(
         result_dir=args.result_dir,
         gt_dir=args.gt_dir,
+        num_points=args.num_points,
         output_dir=args.output_dir,
         device=args.device,
-        result_type = args.result_type,
+        cache_dir=args.cache_dir,
     )
