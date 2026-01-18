@@ -48,7 +48,6 @@ def hungarian_matching_cdist(points1, part_ids1, points2, part_ids2, cost_type="
             elif cost_type == "chamfer":
                 pred_points = points1[part_ids1 == unique_parts1[i]]
                 gt_points = points2[part_ids2 == unique_parts2[j]]
-                # cost_matrix[i, j] = chamfer_distance(torch.from_numpy(pred_points)[None, :, :].float(), torch.from_numpy(gt_points)[None, :, :].float())[0].item()
                 random_int_pred = np.random.randint(0, len(pred_points), min(len(pred_points), 1000))
                 random_int_gt = np.random.randint(0, len(gt_points), min(len(gt_points), 1000))
                 sampled_pred_points = pred_points[random_int_pred]
@@ -824,21 +823,21 @@ def evaluate_articulate_result(
     avg_articulated_mIoU_nopunish = np.mean(articulated_mIoU_distances_nopunish)
 
     return {
-        'rest_avg_chamfer': float(original_avg_chamfer),
-        'articulated_avg_chamfer': float(avg_articulated_chamfer),
-        'rest_avg_giou': float(original_avg_giou),
-        'articulated_avg_giou': float(avg_articulated_giou),
-        'rest_avg_mIoU': float(original_avg_mIoU),
-        'articulated_avg_mIoU': float(avg_articulated_mIoU),
+        'rest_per_part_avg_chamfer': float(original_avg_chamfer),
+        'fully_per_part_articulated_avg_chamfer': float(avg_articulated_chamfer),
+        'rest_per_part_avg_giou': float(original_avg_giou),
+        'fully_per_part_articulated_avg_giou': float(avg_articulated_giou),
+        'rest_per_part_avg_mIoU': float(original_avg_mIoU),
+        'fully_per_part_articulated_avg_mIoU': float(avg_articulated_mIoU),
         "rest_overall_chamfer": float(overall_original_overall_chamfer), 
-        "articulated_overall_chamfer": float(avg_overall_chamfer_articulated),
+        "fully_articulated_overall_chamfer_distances": float(avg_overall_chamfer_articulated),
 
-        "rest_avg_chamfer_nopunish": float(original_avg_chamfer_nopunish),
-        "articulated_avg_chamfer_nopunish": float(avg_articulated_chamfer_nopunish),
-        "rest_avg_giou_nopunish": float(original_avg_giou_nopunish),
-        "articulated_avg_giou_nopunish": float(avg_articulated_giou_nopunish),
-        "rest_avg_mIoU_nopunish": float(original_avg_mIoU_nopunish),
-        "articulated_avg_mIoU_nopunish": float(avg_articulated_mIoU_nopunish),
+        "rest_per_part_avg_chamfer_nopunish": float(original_avg_chamfer_nopunish),
+        "fully_articulated_avg_chamfer_nopunish": float(avg_articulated_chamfer_nopunish),
+        "rest_per_part_avg_giou_nopunish": float(original_avg_giou_nopunish),
+        "fully_per_part_articulated_avg_giou_nopunish": float(avg_articulated_giou_nopunish),
+        "rest_per_part_avg_mIoU_nopunish": float(original_avg_mIoU_nopunish),
+        "fully_per_part_articulated_avg_mIoU_nopunish": float(avg_articulated_mIoU_nopunish),
         
         'per_state_chamfer_distances': [
             float(chamfer) for chamfer in per_state_chamfer_distances

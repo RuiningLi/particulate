@@ -45,7 +45,7 @@ Please refer to [DATA.md](https://github.com/RuiningLi/particulate/blob/main/DAT
 To perform quantitative evaluation with our proposed protocol, during inference, enable `--eval` flag to save the results:
 
 ```bash
-python infer.py --input_mesh /path/to/an/asset/in/the/evaluation/set.obj --eval --output_dir /output/path/for/infer/asset_name/ --dir
+python infer.py --input_mesh /path/to/an/asset/in/the/evaluation/set.obj --eval --output_dir /output/path/for/infer/asset_name/
 ```
 
 This will save a `pred.obj` and a `pred.npz` under `$output_dir/eval`. Run inference for all assets. 

@@ -148,23 +148,23 @@ def evaluate(
             continue
 
     overall_eval_results = {
-        'rest_avg_chamfer': np.round(np.mean([result['rest_avg_chamfer'] for result in eval_results]), 4),
-        'rest_avg_giou': np.round(np.mean([result['rest_avg_giou'] for result in eval_results]), 4),
-        'rest_avg_mIoU': np.round(np.mean([result['rest_avg_mIoU'] for result in eval_results]), 4),
+        'rest_per_part_avg_chamfer': np.round(np.mean([result['rest_per_part_avg_chamfer'] for result in eval_results]), 4),
+        'rest_per_part_avg_giou': np.round(np.mean([result['rest_per_part_avg_giou'] for result in eval_results]), 4),
+        'rest_per_part_avg_mIoU': np.round(np.mean([result['rest_per_part_avg_mIoU'] for result in eval_results]), 4),
     }
-    overall_eval_results['fully_articulated_avg_chamfer'] = np.round(np.mean([result['per_state_chamfer_distances'][-1] for result in eval_results]), 4)
-    overall_eval_results['fully_articulated_avg_giou'] = np.round(np.mean([result['per_state_giou'][-1] for result in eval_results]), 4)
+    overall_eval_results['fully_per_part_articulated_avg_chamfer'] = np.round(np.mean([result['fully_per_part_articulated_avg_chamfer'] for result in eval_results]), 4)
+    overall_eval_results['fully_per_part_articulated_avg_giou'] = np.round(np.mean([result['fully_per_part_articulated_avg_giou'] for result in eval_results]), 4)
     overall_eval_results['fully_articulated_overall_chamfer_distances'] = np.round(np.mean([result['per_state_overall_chamfer_distances'][-1] for result in eval_results]), 4)
     json.dump(overall_eval_results, open(output_path.parent / f"{output_path.stem}_eval_overall.json", "w"), indent=4)
 
     overall_eval_results_nopunish = {
-        'rest_avg_chamfer_nopunish': np.round(np.mean([result['rest_avg_chamfer_nopunish'] for result in eval_results]), 4),
-        'rest_avg_giou_nopunish': np.round(np.mean([result['rest_avg_giou_nopunish'] for result in eval_results]), 4),
-        'rest_avg_mIoU_nopunish': np.round(np.mean([result['rest_avg_mIoU_nopunish'] for result in eval_results]), 4),
+        'rest_per_part_avg_chamfer_nopunish': np.round(np.mean([result['rest_per_part_avg_chamfer_nopunish'] for result in eval_results]), 4),
+        'rest_per_part_avg_giou_nopunish': np.round(np.mean([result['rest_per_part_avg_giou_nopunish'] for result in eval_results]), 4),
+        'rest_per_part_avg_mIoU_nopunish': np.round(np.mean([result['rest_per_part_avg_mIoU_nopunish'] for result in eval_results]), 4),
     }
     
-    overall_eval_results_nopunish['fully_articulated_avg_chamfer_nopunish'] = np.round(np.mean([result['per_state_chamfer_distances_nopunish'][-1] for result in eval_results]), 4)
-    overall_eval_results_nopunish['fully_articulated_avg_giou_nopunish'] = np.round(np.mean([result['per_state_giou_nopunish'][-1] for result in eval_results]), 4)
+    overall_eval_results_nopunish['fully_per_part_articulated_avg_chamfer_nopunish'] = np.round(np.mean([result['per_state_chamfer_distances_nopunish'][-1] for result in eval_results]), 4)
+    overall_eval_results_nopunish['fully_per_part_articulated_avg_giou_nopunish'] = np.round(np.mean([result['per_state_giou_nopunish'][-1] for result in eval_results]), 4)
     overall_eval_results_nopunish['fully_articulated_overall_chamfer_distances_nopunish'] = np.round(np.mean([result['per_state_overall_chamfer_distances'][-1] for result in eval_results]), 4)
     json.dump(overall_eval_results_nopunish, open(output_path.parent / f"{output_path.stem}_eval_overall_nopunish.json", "w"), indent=4)
     print(f"Inference completed! Results saved to: {output_dir}")
