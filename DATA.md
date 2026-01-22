@@ -47,61 +47,15 @@ The arg `--ratio_sharp` dictates the percentage of total points which are sample
 
 ## Evaluation Data 
 
-For evaluation, we transform the output into format:
-
-```json
-{
-    "xyz": float32[N, 3],
-    "part_ids": int32[N],
-    "motion_hierarchy": List[Tuple[int, int]],
-    "is_part_revolute": bool[P],
-    "is_part_prismatic": bool[P],
-    "revolute_plucker": float32[P, 6],
-    "revolute_range": float32[P, 2],
-    "prismatic_axis": float32[P, 3],
-    "prismatic_range": float32[P, 2]
-}
-```
-
-Each is cached as an individual `{Asset_name}.npz` 
-
-The example of the file structure is:
-```
-|
-|-- result_dir
-|   |-- Asset_name1.npz
-|   |-- Asset_name2.npz
-|   ...
-```
-
-#### Detailed description:
-- xyz: point cloud of the object in normalized coordinates $[-0.5, 0.5]^3$. 
-- part_ids: length-N array mapping each point to its part index in [0, P-1]. P is the number of distinct parts. 
-- motion_hierarchy: motion tree describing parent→child links between parts. It can be provided as a list of (parent_id, child_id) tuples.
-- is_part_revolute: boolean flags per part indicating revolute joints.
-- is_part_prismatic: boolean flags per part indicating prismatic joints.
-- revolute_plucker: per-part 6D Plücker line representation of the revolute joint axis in the object frame.
-- revolute_range: per-part [min, max] angle limits in radians for revolute joints. 
-- prismatic_axis: per-part 3D unit vector giving the translation axis for prismatic joints.
-- prismatic_range: per-part [min, max] translation limits in the same normalized length units as the mesh. 
-
-
-
-#### Plücker coordinate format 
-  - For revolute axes, we represent a 3D line (joint axis) with 6 floats `[l_x, l_y, l_z, m_x, m_y, m_z]` where:
-    - `l` is the direction vector of the axis
-    - `m` is the moment vector, defined as `m = l × p` for any point `p` on the line
-
-
 To convert [Training Data](#training-data) to [Evaluation Data](#evaluation-data), run:
 
 ```bash
-python -m particulate.convert_train_to_eval --input_file path/to/the/preprocessed/file --output_file path/to/the/output/npz/file.npz 
+python -m particulate.convert_train_to_eval --input_file /path/to/the/preprocessed/file --output_file path/to/the/output/npz/file.npz 
 ```
 
 For evaluation, we cache points and relevant metadata for efficient data loading. In our evaluation, we cache 100k points uniformly sampled from the surface of each mesh. 
 To do this for a preprocessed output folder, use the `cache_gt.py` script under `particulate/data`:
 
 ```bash
-python -m particulate.data.cache_gt  --root_dir path/to/all/preprocessed/folders/ --output_dir path/to/the/output/dir/ 
+python -m particulate.data.cache_gt  --root_dir /path/to/directory/of/preprocessed/assets/ --output_dir /path/to/save/cached/ground/truths/
 ```

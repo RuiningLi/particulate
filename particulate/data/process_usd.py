@@ -104,6 +104,31 @@ def _quat_to_mat(quaternion: Optional[Union[Gf.Quatf, Gf.Quatd]]) -> np.ndarray:
         return np.eye(3)
 
 
+# ========================== Union-Find for Fixed Joint Merging ==============
+
+class UnionFind:
+    """Union-Find data structure for merging links connected by fixed joints."""
+    
+    def __init__(self, elements):
+        self.parent = {e: e for e in elements}
+    
+    def find(self, x):
+        """Find the representative of x with path compression."""
+        if self.parent[x] != x:
+            self.parent[x] = self.find(self.parent[x])
+        return self.parent[x]
+    
+    def union(self, x, y):
+        """Union two elements, always making the alphabetically smaller one the root."""
+        rx, ry = self.find(x), self.find(y)
+        if rx == ry:
+            return
+        # Always make the alphabetically smaller one the root for determinism
+        if rx > ry:
+            rx, ry = ry, rx
+        self.parent[ry] = rx
+
+
 # ========================== USD Joint Info =================================
 
 def safe_float_or_default(value: Any, default: float) -> float:
@@ -434,21 +459,37 @@ def process_usd(input_usd: str, output_dir: str):
 
     os.makedirs(output_dir, exist_ok=True)
     
-    # Sort links to ensure deterministic order
-    link_names_sorted = sorted([path.pathString for path in link_paths])
-    link_index_map = {name: i for i, name in enumerate(link_names_sorted)}
+    # Get all link names
+    link_names = [path.pathString for path in link_paths]
+    
+    # --- 1b. Merge links connected by fixed joints ---
+    # Create Union-Find and merge links connected by fixed joints
+    uf = UnionFind(link_names)
+    for j in joints:
+        if j.jtype == 'fixed':
+            parent_name = str(j.parent)
+            child_name = str(j.child)
+            if parent_name in uf.parent and child_name in uf.parent:
+                uf.union(parent_name, child_name)
+    
+    # Get unique representatives (merged links) in sorted order
+    merged_link_names = sorted(set(uf.find(name) for name in link_names))
+    merged_link_index_map = {name: i for i, name in enumerate(merged_link_names)}
+    
+    # Helper function to get merged index for any original link name
+    def get_merged_index(link_name: str) -> int:
+        return merged_link_index_map[uf.find(link_name)]
 
     # --- 2. Mesh Collection ---
-    # Map each link to its visual meshes
-    link_to_mesh_paths = {}
+    # Map each merged link to its visual meshes (from all original links in the group)
+    link_to_mesh_paths = {name: [] for name in merged_link_names}
     for link_path in link_paths:
         link_name = link_path.pathString
-        meshes = []
+        merged_name = uf.find(link_name)
         # Find all meshes under this link
         for descendant in Usd.PrimRange(stage.GetPrimAtPath(link_path)):
             if descendant.IsA(UsdGeom.Mesh):
-                meshes.append(descendant.GetPath().pathString)
-        link_to_mesh_paths[link_name] = meshes
+                link_to_mesh_paths[merged_name].append(descendant.GetPath().pathString)
 
     all_mesh_paths = [m for meshes in link_to_mesh_paths.values() for m in meshes]
 
@@ -463,20 +504,24 @@ def process_usd(input_usd: str, output_dir: str):
     # Note: iterating mesh_to_vert_count relies on insertion order from write_obj_from_stage,
     # which matches the Traversal order.
     for mesh_path, vert_count in mesh_to_vert_count.items():
-        # Find which link this mesh belongs to
+        # Find which merged link this mesh belongs to
         parent_link = next(link for link, meshes in link_to_mesh_paths.items() if mesh_path in meshes)
-        link_idx = link_index_map[parent_link]
+        link_idx = merged_link_index_map[parent_link]  # Already a merged link name
         vert_to_link_indices.extend([link_idx] * vert_count)
 
     vert_to_bone_array = np.array(vert_to_link_indices, dtype=np.int16)
 
-    # Build hierarchy (parent-child indices)
-    link_hierarchy = []
+    # Build hierarchy (parent-child indices) - skip fixed joints, use merged indices
+    link_hierarchy_set = set()
     for j in joints:
-        parent = str(j.parent)
-        child = str(j.child)
-        if parent in link_index_map and child in link_index_map:
-            link_hierarchy.append((link_index_map[parent], link_index_map[child]))
+        if j.jtype == 'fixed':
+            continue  # Fixed joints are merged, skip them
+        parent_idx = get_merged_index(str(j.parent))
+        child_idx = get_merged_index(str(j.child))
+        # Skip if both map to the same merged link (shouldn't happen for non-fixed joints)
+        if parent_idx != child_idx:
+            link_hierarchy_set.add((parent_idx, child_idx))
+    link_hierarchy = sorted(link_hierarchy_set)  # Sort for determinism
 
     np.savez(
         Path(output_dir) / "meta.npz",
@@ -485,13 +530,17 @@ def process_usd(input_usd: str, output_dir: str):
     )
 
     # --- 5. Compute Joint Motion Info (Original Scale) ---
-    # Initialize containers
-    link_axes_plucker = {str(link_index_map[k]): np.zeros(12) for k in link_names_sorted}
-    link_range = {str(link_index_map[k]): np.zeros(4) for k in link_names_sorted}
+    # Initialize containers using merged link indices
+    link_axes_plucker = {str(i): np.zeros(12) for i in range(len(merged_link_names))}
+    link_range = {str(i): np.zeros(4) for i in range(len(merged_link_names))}
     
     for j in joints:
-        child_name = str(j.child)
-        idx_str = str(link_index_map[child_name])
+        if j.jtype == 'fixed':
+            continue  # Fixed joints have no motion
+        
+        # Use merged index for the child
+        child_idx = get_merged_index(str(j.child))
+        idx_str = str(child_idx)
         
         anchor = j.anchor_world
         axis = j.axis_world

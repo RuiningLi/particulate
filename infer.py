@@ -27,6 +27,7 @@ from partfield_utils import get_partfield_model, obtain_partfield_feats
 from yacs.config import CfgNode
 torch.serialization.add_safe_globals([CfgNode])
 
+torch.random.manual_seed(42)
 
 DATA_CONFIG = {
     'sharp_point_ratio': 0.5,
@@ -167,7 +168,7 @@ def save_articulated_meshes(mesh, face_indices, outputs, output_path, strict, an
         prismatic_axis,
         prismatic_range,
         animation_frames,
-        str(Path(output_path) / animated_filename),
+        os.path.join(output_path, animated_filename),
         include_axes=False,
         axes_meshes=None
     )
@@ -175,6 +176,7 @@ def save_articulated_meshes(mesh, face_indices, outputs, output_path, strict, an
 
     return (
         mesh_parts_original,
+        face_part_ids,
         unique_part_ids,
         motion_hierarchy,
         is_part_revolute,
@@ -238,6 +240,7 @@ def main(args):
     strict = not args.no_strict
     (
         mesh_parts_original,
+        face_part_ids,
         unique_part_ids,
         motion_hierarchy,
         is_part_revolute,
@@ -288,6 +291,56 @@ def main(args):
             name="model"
         )
 
+    # Save results for evaluation
+    if args.eval:
+        eval_result_output_dir = os.path.join(args.output_dir, "eval")
+        os.makedirs(eval_result_output_dir, exist_ok=True)
+        mesh.export(os.path.join(eval_result_output_dir, "pred.obj"))
+
+        old_part_id_to_new_part_id = {part_id: idx for idx, part_id in enumerate(unique_part_ids)}
+        new_face_part_ids = face_part_ids.copy()
+        for idx, part_id in enumerate(unique_part_ids):
+            new_face_part_ids[face_part_ids == part_id] = idx
+        
+        # Build induced tree: skip removed parts and connect available ancestors to descendants.
+        available_parts = set(old_part_id_to_new_part_id.keys())
+        children_map = {}
+        for p, c in motion_hierarchy:
+            if p not in children_map:
+                children_map[p] = []
+            children_map[p].append(c)
+        
+        def get_available_descendants(node):
+            """Find all direct available descendants, skipping unavailable nodes."""
+            if node not in children_map:
+                return []
+            descendants = []
+            for child in children_map[node]:
+                if child in available_parts:
+                    descendants.append(child)
+                else:
+                    # Recursively get descendants of unavailable child.
+                    descendants.extend(get_available_descendants(child))
+            return descendants
+        
+        new_motion_hierarchy = []
+        for parent in available_parts:
+            for child in get_available_descendants(parent):
+                new_motion_hierarchy.append(
+                    (old_part_id_to_new_part_id[parent], old_part_id_to_new_part_id[child])
+                )
+
+        np.savez(os.path.join(eval_result_output_dir, "pred.npz"),
+            face_part_ids=new_face_part_ids,
+            motion_hierarchy=new_motion_hierarchy,
+            is_part_revolute=is_part_revolute[unique_part_ids],
+            is_part_prismatic=is_part_prismatic[unique_part_ids],
+            revolute_plucker=revolute_plucker[unique_part_ids],
+            revolute_range=revolute_range[unique_part_ids],
+            prismatic_axis=prismatic_axis[unique_part_ids],
+            prismatic_range=prismatic_range[unique_part_ids],
+        )
+
 
 if __name__ == "__main__":
     if not torch.cuda.is_available():
@@ -304,5 +357,6 @@ if __name__ == "__main__":
     parser.add_argument("--animation_frames", type=int, default=50, help="Number of animation frames")
     parser.add_argument("--export_urdf", action="store_true", help="Export URDF")
     parser.add_argument("--export_mjcf", action="store_true", help="Export MJCF")
+    parser.add_argument("--eval", action="store_true", help="Save results for evaluation")
     args = parser.parse_args()
     main(args)

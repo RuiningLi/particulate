@@ -16,7 +16,7 @@ Particulate is a feed-forward approach that, given a single static 3D mesh of an
 
 ## 🔧 Installation
 Our implementation is tested on pytorch==2.4.0 with cuda 12.4 on Ubuntu 22.04. 
-```
+```bash
 conda create -n particulate python=3.10
 conda activate particulate
 pip install -r requirements.txt
@@ -25,7 +25,7 @@ pip install -r requirements.txt
 ## 🚀 Inference
 To use our model to predict the articulated structure of a custom 3D model (alternatively, you can try our [demo](https://huggingface.co/spaces/rayli/particulate) on HuggingFace without local setup):
 
-```
+```bash
 python infer.py --input_mesh ./hunyuan3d-examples/foldingchair.glb
 ```
 
@@ -42,65 +42,88 @@ Please refer to [DATA.md](https://github.com/RuiningLi/particulate/blob/main/DAT
 
 ## 🔎 Evaluation 
 
-Example of evaluation script: 
-```
-python evaluate.py 
-      --gt_dir dataset/Lightwheel_uniform-100k
-      --output_dir eval_result/
-      --result_dir result_dir/
-      --result_type particulate
+To perform quantitative evaluation with our proposed protocol, during inference, enable `--eval` flag to save the results:
+
+```bash
+python infer.py --input_mesh /path/to/an/asset/in/the/evaluation/set.obj --eval --output_dir /output/path/for/infer/asset_name/
 ```
 
-The evaluator expects:
+This will save a `pred.obj` and a `pred.npz` under `$output_dir/eval`. Run inference for all assets. 
 
-- gt_dir: directory of ground-truth `.npz` files named `{model_name}.npz`. 
+Then, use the `cache_gt.py` script under `particulate/data` to convert all the preprocessed ground-truth assets(refer to [DATA.md](https://github.com/RuiningLi/particulate/blob/main/DATA.md)) to the same format, serve as ground truth for later evaluation:
 
-- output_dir: per-sample outputs and overall summaries:
-  - Per-sample: `<sample_name>_pred_eval.json`; meshes when enabled: `<sample_name>_pred_{original,low,high}.obj`.
-    - With `--save_pcd_gt`, also `<sample_name>_gt_{original,low,high}.obj`.
-  - Overall: saved next to `output_dir` as `<basename(output_dir)>_eval_overall.json`, give the metric averaged over all assets. 
-
-- result_dir: directory of prediction `.npz` files that follow the meta schema. If you first need to convert meshes to point clouds with articulation metadata, see Resampling below.
-
-- result_type: custom prediction or <em>particulate</em> prediction
-
-For details of evaluation data format, please refer to [DATA.md](https://github.com/RuiningLi/particulate/blob/main/DATA.md).
-
-<details>
-<summary>
-We provide options to sample points cloud on given mesh(.obj), by using the commands: </summary>
-
-<a id="resample"></a>
-
-```
-python evaluate.py 
-      --gt_dir dataset/Lightwheel_uniform-100k \
-      --output_dir eval_result/ \
-      --result_dir result_dir/ \
-      --result_type custom \
-      --resample_points \
-      --meta_dir dataset/custom_data/ \
+```bash
+python -m particulate.data.cache_gt --root_dir  /path/to/directory/of/preprocessed/assets/ --output_dir /path/to/save/cached/ground/truths/
 ```
 
-- meta_dir: directory containing the mesh/point cloud and articulation information per asset. 
+With the GT and predicted files ready, we can obtain the evaluation results by:
+
+```bash
+python evaluate.py --gt_dir /directory/of/all/preprocessed/gt/file/ --result_dir /directory/of/all/prediction/  --output_dir /directory/of/evaluation/output/
+```
 
 Where:
-```
-|
-|-- meta_dir
-|   |-- Asset_name1
-|   |   |-- original.obj
-|   |   |-- meta.npz
-|   |
-|   |-- Asset_name2
-|   |   |-- original.obj
-|   |   |-- meta.npz
-|   |
-|   ...
+- **`--gt_dir`**: directory produced by `python -m particulate.data.cache_gt ...` containing cached GT `.npz` files named `<asset_name>.npz`.
+- **`--result_dir`**: root directory that contains your inference outputs for all assets. `evaluate.py` searches for prediction meshes under `**/eval/*.obj` and expects each asset to have an `eval/` folder (e.g. `results/Blender001/eval/pred.obj` + `results/Blender001/eval/pred.npz`).
+- **`--output_dir`**: directory where evaluation JSON files will be written (default: `eval_result`).
+
+<details>
+<summary>Step-by-step guide to reproduce our results on PartNet-Mobility test set</summary>
+
+Assuming the URDF assets in the test set are located at `$PARTNET_TEST_SET/*/mobility.urdf`, first preprocess the assets:
+
+```bash
+mkdir -p "$PARTNET_PROPROCESSED_DIR" && find "$PARTNET_TEST_SET" -mindepth 2 -maxdepth 2 -name 'mobility.urdf' -path "$PARTNET_TEST_SET/*/mobility.urdf" -print0 | xargs -0 -P "$(nproc)" -I{} bash -lc 'urdf="{}"; obj="$(basename "$(dirname "$urdf")")"; python -m particulate.data.process_urdf "$urdf" "$PARTNET_PROPROCESSED_DIR/$obj"'
 ```
 
-- original.obj: triangle mesh used for uniform surface sampling. 
-- meta.npz: contains `vert_to_bone` (|V|, ), which indicate the part_id for each face in the mesh. The motion_hierarchy, is_part_revolute, is_part_prismatic, revolute_plucker, revolute_range, prismatic_axis, prismatic_range, are also required. They are the same as the `{Asset_name}.npz` in [DATA.md](https://github.com/RuiningLi/particulate/blob/main/DATA.md).
+Then, from the preprocessed folders, we sample `N=100000` points uniformly and cache them together with the articulation attributes:
+
+```bash
+mkdir -p "$PARTNET_CACHED_DIR" && find "$PARTNET_PROPROCESSED_DIR" -mindepth 1 -maxdepth 1 -type d -print0 | xargs -0 -P "$(nproc)" -I{} bash -lc 'd="{}"; b="$(basename "$d")"; python -m particulate.data.cache_points --root "$d" --output_path "$PARTNET_CACHED_DIR/$b" --num_points 100000 --ratio_sharp 0 --format eval'
+```
+
+Then, run inference on all assets (sequential; GPU):
+
+```bash
+mkdir -p "$PARTNET_INFERENCE_DIR" && while IFS= read -r -d '' mesh; do subdir="$(basename "$(dirname "$mesh")")"; mkdir -p "$PARTNET_INFERENCE_DIR/$subdir"; python infer.py --input_mesh "$mesh" --eval --output_dir "$PARTNET_INFERENCE_DIR/$subdir" --up_dir Z; done < <(find "$PARTNET_PROPROCESSED_DIR" -name 'original.obj' -print0)
+```
+
+Finally, perform evaluation:
+
+```bash
+mkdir -p "$PARTNET_EVAL_DIR" && python evaluate.py --gt_dir "$PARTNET_CACHED_DIR" --result_dir "$PARTNET_INFERENCE_DIR" --output_dir "$PARTNET_EVAL_DIR"
+```
+
+</details>
+
+
+<details>
+<summary>Step-by-step guide to reproduce our results on Lightwheel test set</summary>
+
+Assuming the USD assets in the test set are located at `$LIGHTWHEEL_ROOT/{object_identifier}/{object_identifier}.usd`, first preprocess the assets:
+
+```bash
+mkdir -p "$LIGHTWHEEL_PROPROCESSED_DIR" && find "$LIGHTWHEEL_ROOT" -mindepth 2 -maxdepth 2 -name '*.usd' -path "$LIGHTWHEEL_ROOT/*/*.usd" -print0 | xargs -0 -P "$(nproc)" -I{} bash -lc 'usd="{}"; obj="$(basename "$(dirname "$usd")")"; python -m particulate.data.process_usd "$usd" "$LIGHTWHEEL_PROPROCESSED_DIR/$obj"'
+```
+
+Then, from the preprocessed folders, we sample `N=100000` points uniformly and cache them together with the articulation attributes:
+
+```bash
+mkdir -p "$LIGHTWHEEL_CACHED_DIR" && find "$LIGHTWHEEL_PROPROCESSED_DIR" -mindepth 1 -maxdepth 1 -type d -print0 | xargs -0 -P "$(nproc)" -I{} bash -lc 'd="{}"; b="$(basename "$d")"; python -m particulate.data.cache_points --root "$d" --output_path "$LIGHTWHEEL_CACHED_DIR/$b" --num_points 100000 --ratio_sharp 0 --format eval'
+```
+
+Then, run inference on all assets:
+
+```bash
+mkdir -p "$LIGHTWHEEL_INFERENCE_DIR" && while IFS= read -r -d '' mesh; do subdir="$(basename "$(dirname "$mesh")")"; mkdir -p "$LIGHTWHEEL_INFERENCE_DIR/$subdir"; python infer.py --input_mesh "$mesh" --eval --output_dir "$LIGHTWHEEL_INFERENCE_DIR/$subdir" --up_dir Z; done < <(find "$LIGHTWHEEL_PROPROCESSED_DIR" -name 'original.obj' -print0)
+```
+
+Finally, perform evaluation:
+
+```bash
+mkdir -p "$LIGHTWHEEL_EVAL_DIR" && python evaluate.py --gt_dir $LIGHTWHEEL_CACHED_DIR --result_dir $LIGHTWHEEL_INFERENCE_DIR --output_dir $LIGHTWHEEL_EVAL_DIR
+```
+
 </details>
 
 ## TODO
