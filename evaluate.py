@@ -1,12 +1,9 @@
 import argparse
-from ast import GtE
-import glob
 import json
-import os
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 import trimesh
-from particulate.data_utils import load_obj_raw_preserve, get_face_to_bone_mapping, get_gt_motion_params
+from particulate.data_utils import load_obj_raw_preserve
 from particulate.evaluation_utils import evaluate_articulate_result
 
 import numpy as np
@@ -14,23 +11,17 @@ import torch
 from tqdm import tqdm
 
 
-import sys
-
 @torch.no_grad()
 @torch.autocast(device_type='cuda', dtype=torch.bfloat16)
-
-
 def evaluate_inference_results(
     results: Dict[str, Any],
     gt: Dict[str, Any],
-    output_path: str,
-    hungarian_matching_cost_type = "cdist", # "cdist"or "chamfer"
+    output_json_path: Path,
+    hungarian_matching_cost_type = "cdist",  # "cdist"or "chamfer"
 ):
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
     """Evaluate inference results."""
-    eval_results, revolute_range_pred, prismatic_range_pred = evaluate_articulate_result(
+    output_json_path.parent.mkdir(parents=True, exist_ok=True)
+    eval_results = evaluate_articulate_result(
         xyz=results['points'],
         xyz_gt=gt['points'],
         part_ids_pred=results['part_ids'],
@@ -52,100 +43,56 @@ def evaluate_inference_results(
         num_articulation_states=5,
         hungarian_matching_cost_type = hungarian_matching_cost_type,
     )
-    json.dump(eval_results, open(output_path.parent / f"{output_path.stem}_eval.json", "w"), indent=4)
-    return eval_results, revolute_range_pred, prismatic_range_pred
+    json.dump(eval_results, open(output_json_path, "w"), indent=4)
+    return eval_results
 
-def process_prediction(
-    obj_file: str,
-    num_points: int,
-    cache_dir: Optional[str] = None,
-):
-    if cache_dir is not None:
-        cache_file = os.path.join(cache_dir, f"{obj_file.split('/')[-3]}.npz")
 
-    meta_path = obj_file.replace("pred.obj", "pred.npz")
-    meta = np.load(meta_path)
-    face_part_id = meta["face_part_ids"]
-    verts, faces = load_obj_raw_preserve(Path(obj_file))
+def process_prediction(pred_dir: Path, num_points: int):
+    """Augment the prediction results with uniformly sampled points on the surface."""
+    results = dict(np.load(pred_dir / "pred.npz"))
+    face_part_id = results["face_part_ids"]
+    verts, faces = load_obj_raw_preserve(pred_dir / "pred.obj")
     mesh = trimesh.Trimesh(verts, faces, process=False)
-    # Sample points on the surface with normals
     points_uniform, face_indices = mesh.sample(num_points, return_index=True)
     part_ids = face_part_id[face_indices]
-    results = {
-        "points": points_uniform,
-        "part_ids": part_ids,
-        "motion_hierarchy": meta['motion_hierarchy'],
-        "is_part_revolute": meta['is_part_revolute'],
-        "is_part_prismatic": meta['is_part_prismatic'],
-        "revolute_plucker": meta['revolute_plucker'],
-        "revolute_range": meta['revolute_range'],
-        "prismatic_axis": meta['prismatic_axis'],
-        "prismatic_range": meta['prismatic_range'],
-        "face_indices": face_indices,
-    }
-    if cache_dir is not None:
-        np.savez(cache_file, **results)
-    return results
+    return {**results, "points": points_uniform, "part_ids": part_ids}
+
+
+def assert_points_normalized(points: np.ndarray) -> None:
+    """Ensure points are centered at origin (bbox) and within [-0.5, 0.5]."""
+    assert np.allclose(points.min(0) + points.max(0), 0, atol=1e-4), "Bounding box not centered at origin"
+    assert 0.5 - 1e-4 <= np.abs(points).max() <= 0.5 + 1e-4, f"Bounding box not as expected [-0.5, 0.5]: {np.abs(points).max()}"
+
 
 def evaluate(
-    gt_dir: str,
-    result_dir: str,
-    output_dir: str = "./inference_results",
-    device: str = "cuda",
-    num_points: int = 100000,
-    cache_dir: Optional[str] = None,
+    gt_dir: Path,
+    result_dir: Path,
+    output_dir: Path,
+    num_points: int = 100000
 ):
-    """Main inference function."""
-    # Validate device
-    if device == "cuda" and not torch.cuda.is_available():
-        print("WARNING: CUDA requested but not available. Falling back to CPU.")
-        device = "cpu"
-    
-    # Create output directory
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    """Evaluate all inference results."""
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     eval_results = []
-    obj_files = glob.glob(os.path.join(result_dir, "**", "eval","*.obj"))
-    for i, obj_file in enumerate(tqdm(obj_files, desc="Processing samples")):
+    
+    for pred_dir in tqdm(result_dir.glob("*/eval"), desc="Processing samples"):
+        results = process_prediction(pred_dir=pred_dir, num_points=num_points)
+        assert_points_normalized(results['points'])
 
-        results = process_prediction(obj_file=obj_file, num_points=num_points, cache_dir=cache_dir)
-
-        # check whether scaled 
-
-        if not np.all(np.abs(results['points']) <= 0.5+1e-3):
-            breakpoint()
-        min_x, min_y, min_z = np.min(results['points'], axis=0)
-        max_x, max_y, max_z = np.max(results['points'], axis=0)
-        if not (np.abs(min_x + max_x)/2 < 1e-2 and np.abs(min_y + max_y)/2 < 1e-2 and np.abs(min_z + max_z)/2 < 1e-2):
-            breakpoint()
-        if not np.max(np.abs(results['points']) >= 0.5-1e-3):
-            breakpoint()
-
-        sample_name = obj_file.split("/")[-3]
+        sample_name = pred_dir.parent.name
         try:
-            gt_file = os.path.join(gt_dir, f"{sample_name}.npz")
-            gt = np.load(gt_file)
-
-        except:
-            # raise ValueError(f"GT file {gt_file} not found")
-            print(f"GT file {gt_file} not found")
+            gt = dict(np.load(gt_dir / f"{sample_name}.npz"))
+        except FileNotFoundError as e:
+            print(f"Corresponding ground-truth file of {sample_name} not found: {e}")
             continue
 
-        # Save results
-        output_file = output_path / f"{sample_name}_pred"
-
-        if os.path.exists(os.path.join(output_file.parent / f"{output_file.stem}_eval.json")):
-            eval_result = json.load(open(os.path.join(output_file.parent / f"{output_file.stem}_eval.json"), "r"))
-            eval_results.append(eval_result)
+        eval_json = (output_dir / sample_name).with_suffix(".json")
+        if eval_json.exists():
+            with open(eval_json, "r") as f:
+                eval_result = json.load(f)
         else:
-            eval_result, revolute_range_pred, prismatic_range_pred = evaluate_inference_results(results, gt, str(output_file), hungarian_matching_cost_type='cdist')
-            eval_results.append(eval_result)
-
-        if os.path.exists(os.path.join(output_file.parent / f"{output_file.stem}_eval.json")):
-            eval_result = json.load(open(os.path.join(output_file.parent / f"{output_file.stem}_eval.json"), "r"))
-            eval_results.append(eval_result)
-            continue
+            eval_result = evaluate_inference_results(results, gt, eval_json, hungarian_matching_cost_type='cdist')
+        eval_results.append(eval_result)
 
     overall_eval_results = {
         'rest_per_part_avg_chamfer': np.round(np.mean([result['rest_per_part_avg_chamfer'] for result in eval_results]), 4),
@@ -155,7 +102,7 @@ def evaluate(
     overall_eval_results['fully_per_part_articulated_avg_chamfer'] = np.round(np.mean([result['fully_per_part_articulated_avg_chamfer'] for result in eval_results]), 4)
     overall_eval_results['fully_per_part_articulated_avg_giou'] = np.round(np.mean([result['fully_per_part_articulated_avg_giou'] for result in eval_results]), 4)
     overall_eval_results['fully_articulated_overall_chamfer_distances'] = np.round(np.mean([result['per_state_overall_chamfer_distances'][-1] for result in eval_results]), 4)
-    json.dump(overall_eval_results, open(output_path.parent / f"{output_path.stem}_eval_overall.json", "w"), indent=4)
+    json.dump(overall_eval_results, open(output_dir / "OVERALL_EVAL_RESULTS.json", "w"), indent=4)
 
     overall_eval_results_nopunish = {
         'rest_per_part_avg_chamfer_nopunish': np.round(np.mean([result['rest_per_part_avg_chamfer_nopunish'] for result in eval_results]), 4),
@@ -166,25 +113,16 @@ def evaluate(
     overall_eval_results_nopunish['fully_per_part_articulated_avg_chamfer_nopunish'] = np.round(np.mean([result['per_state_chamfer_distances_nopunish'][-1] for result in eval_results]), 4)
     overall_eval_results_nopunish['fully_per_part_articulated_avg_giou_nopunish'] = np.round(np.mean([result['per_state_giou_nopunish'][-1] for result in eval_results]), 4)
     overall_eval_results_nopunish['fully_articulated_overall_chamfer_distances_nopunish'] = np.round(np.mean([result['per_state_overall_chamfer_distances'][-1] for result in eval_results]), 4)
-    json.dump(overall_eval_results_nopunish, open(output_path.parent / f"{output_path.stem}_eval_overall_nopunish.json", "w"), indent=4)
+    json.dump(overall_eval_results_nopunish, open(output_dir / "OVERALL_EVAL_RESULTS_NOPUNISH.json", "w"), indent=4)
     print(f"Inference completed! Results saved to: {output_dir}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run inference on Articulate3D model")
-    parser.add_argument("--gt_dir", type=str, default="dataset/Lightwheel_uniform-100k", help="Path to gt pcd directory")
-    parser.add_argument("--result_dir", type=str, required=True, help="Path to result directory")
-    parser.add_argument("--output_dir", type=str, default="eval_result", help="Evaluation results output directory")
-    parser.add_argument("--device", type=str, default="cuda", help="Device to use")
-    parser.add_argument("--num_points", type = int, default =100000, help = "Number of points to sample from the mesh")
-    parser.add_argument("--cache_dir", type=str, default=None, help="Path to cache directory, if not provided, will process all obj files but not cache them")
+    parser.add_argument("--gt_dir", type=Path, required=True, help="Directory containing all cached ground-truth files (an npz file for each asset)")
+    parser.add_argument("--result_dir", type=Path, required=True, help="Directory containing all predictions (an npz file and an obj file for each asset)")
+    parser.add_argument("--output_dir", type=Path, required=True, help="Directory to save evaluation results")
+    parser.add_argument("--num_points", type=int, default=100_000, help = "Number of points to sample for Chamfer Distance computation")
     args = parser.parse_args()
 
-    evaluate(
-        result_dir=args.result_dir,
-        gt_dir=args.gt_dir,
-        num_points=args.num_points,
-        output_dir=args.output_dir,
-        device=args.device,
-        cache_dir=args.cache_dir,
-    )
+    evaluate(gt_dir=args.gt_dir, result_dir=args.result_dir, output_dir=args.output_dir, num_points=args.num_points)

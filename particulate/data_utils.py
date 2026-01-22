@@ -4,6 +4,10 @@ from typing import Tuple
 import numpy as np
 
 
+AXES_PLUCKER_DIM = 12
+RANGE_DIM = 4
+
+
 def load_obj_raw_preserve(path: Path) -> Tuple[np.ndarray, np.ndarray]:
     """Load vertices and faces from an OBJ file while preserving vertex order.
 
@@ -33,6 +37,7 @@ def load_obj_raw_preserve(path: Path) -> Tuple[np.ndarray, np.ndarray]:
                                     int(toks[i + 1].split('/')[0]) - 1])
     return np.asarray(verts, float), np.asarray(faces, int)
 
+
 def get_face_to_bone_mapping(
     verts_to_bone: np.ndarray,
     faces: np.ndarray,
@@ -48,6 +53,7 @@ def get_face_to_bone_mapping(
         face_to_bone.append(bone_ids[0])
 
     return np.array(face_to_bone)
+
 
 def get_gt_motion_params(
     link_axes_plucker: np.ndarray, 
@@ -68,6 +74,7 @@ def get_gt_motion_params(
         gt_revolute_plucker, gt_prismatic_axis, 
         gt_revolute_range, gt_prismatic_range
     )
+
 
 def sharp_sample_pointcloud(mesh, num_points: int = 8192):
     V = mesh.vertices

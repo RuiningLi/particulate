@@ -1,35 +1,17 @@
 import argparse
 import os
 from pathlib import Path
-from typing import Union, Optional
 import glob
 import numpy as np
 import trimesh
 
 from particulate.data_utils import (
     load_obj_raw_preserve,
-    get_gt_motion_params
+    get_gt_motion_params,
+    get_face_to_bone_mapping,
+    AXES_PLUCKER_DIM,
+    RANGE_DIM
 )
-
-_AXES_PLUCKER_DIM = 12
-_RANGE_DIM = 4
-
-
-def get_face_to_bone_mapping(
-    verts_to_bone: np.ndarray,
-    faces: np.ndarray,
-) -> np.ndarray:
-    """
-    Get the face to bone mapping.
-    """
-    face_to_bone = []
-    for face in faces:
-        bone_ids = verts_to_bone[face]
-        if len(np.unique(bone_ids)) != 1:  # All vertices belong to same bone
-            return None
-        face_to_bone.append(bone_ids[0])
-
-    return np.array(face_to_bone)
 
 
 def cache_points(
@@ -71,8 +53,8 @@ def cache_points(
     link_axes_plucker = np.load(link_axes_plucker_path)
     link_range = np.load(link_range_path)
 
-    combined_link_axes_plucker = np.zeros((num_bones, _AXES_PLUCKER_DIM), dtype=np.float32)
-    combined_link_range = np.zeros((num_bones, _RANGE_DIM), dtype=np.float32)
+    combined_link_axes_plucker = np.zeros((num_bones, AXES_PLUCKER_DIM), dtype=np.float32)
+    combined_link_range = np.zeros((num_bones, RANGE_DIM), dtype=np.float32)
     for k, v in link_axes_plucker.items():
         combined_link_axes_plucker[int(k)] = v
     for k, v in link_range.items():

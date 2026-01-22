@@ -810,7 +810,6 @@ def evaluate_articulate_result(
         articulated_giou_distances_nopunish.append(average_giou_nopunish)
         articulated_mIoU_distances_nopunish.append(average_mIoU_nopunish)
         
-
     # 3. Average across all articulation states
     avg_articulated_chamfer = np.mean(articulated_chamfer_distances)
 
@@ -861,4 +860,4 @@ def evaluate_articulate_result(
         'per_state_mIoU_nopunish': [
             float(mIoU) for mIoU in per_state_mIoU_distances_nopunish
         ]
-    }, revolute_range_pred, prismatic_range_pred
+    }
