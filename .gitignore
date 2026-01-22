@@ -4,3 +4,5 @@ __pycache__/
 *.ckpt
 *.pt
 inference_outputs/
+Lightwheel_OpenSource/
+preprocessed-data/
