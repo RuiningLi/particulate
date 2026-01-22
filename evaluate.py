@@ -2,14 +2,14 @@ import argparse
 import json
 from pathlib import Path
 from typing import Dict, Any
-import trimesh
-from particulate.data_utils import load_obj_raw_preserve
-from particulate.evaluation_utils import evaluate_articulate_result
 
 import numpy as np
 import torch
+import trimesh
 from tqdm import tqdm
 
+from particulate.data_utils import load_obj_raw_preserve
+from particulate.evaluation_utils import evaluate_articulate_result
 
 @torch.no_grad()
 @torch.autocast(device_type='cuda', dtype=torch.bfloat16)

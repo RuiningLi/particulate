@@ -168,7 +168,7 @@ def save_articulated_meshes(mesh, face_indices, outputs, output_path, strict, an
         prismatic_axis,
         prismatic_range,
         animation_frames,
-        str(Path(output_path) / animated_filename),
+        os.path.join(output_path, animated_filename),
         include_axes=False,
         axes_meshes=None
     )

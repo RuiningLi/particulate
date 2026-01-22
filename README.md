@@ -68,94 +68,60 @@ Where:
 - **`--output_dir`**: directory where evaluation JSON files will be written (default: `eval_result`).
 
 <details>
-<summary>Step-by-step guide to reproduce our results on PartNet-Mobility/Lightwheel test set</summary>
+<summary>Step-by-step guide to reproduce our results on PartNet-Mobility test set</summary>
 
-Preprocess all URDF/USD assets, if you are working on PartNet-Mobility, we assume the URDF assets in the test set is located at `$PARTNET_TEST_SET/*/mobility.urdf`. 
+Assuming the URDF assets in the test set are located at `$PARTNET_TEST_SET/*/mobility.urdf`, first preprocess the assets:
 
-Let's say:
-```
-PRE_DIR=preprocessed_data/
-GT_CACHE_DIR=cached_groundtruth/
-EVAL_OUT=evaluation/
-```
-Preprocess the source data first:
-```
-python -m particulate.data.process_parallel "$PARTNET_TEST_SET/*/mobility.urdf" "$PRE_DIR" --dataset partnet-mobility 
+```bash
+mkdir -p "$PARTNET_PROPROCESSED_DIR" && find "$PARTNET_TEST_SET" -mindepth 2 -maxdepth 2 -name 'mobility.urdf' -path "$PARTNET_TEST_SET/*/mobility.urdf" -print0 | xargs -0 -P "$(nproc)" -I{} bash -lc 'urdf="{}"; obj="$(basename "$(dirname "$urdf")")"; python -m particulate.data.process_urdf "$urdf" "$PARTNET_PROPROCESSED_DIR/$obj"'
 ```
 
-`cache_gt.py` turns the preprocessed assets into cached GT `.npz` files (one per asset) used by `evaluate.py`.
+Then, from the preprocessed folders, we sample `N=100000` points uniformly and cache them together with the articulation attributes:
 
-```
-python -m particulate.data.cache_gt --root_dir "$PRE_DIR" --output_dir "$GT_CACHE_DIR"
-```
-
-Run `infer.py` for every test asset mesh and save predictions in a consistent directory structure.
-
-```
-BASE_OUT=/directory/of/all/prediction/
-
-find "$PRE_DIR" -name '*.obj' -print0 |
-while IFS= read -r -d '' mesh; do
-  subdir=$(basename "$(dirname "$mesh")")
-  python infer.py \
-    --input_mesh "$mesh" \
-    --eval \
-    --output_dir "$BASE_OUT/$subdir" \
-    --up_dir Z
-done
+```bash
+mkdir -p "$PARTNET_CACHED_DIR" && find "$PARTNET_PROPROCESSED_DIR" -mindepth 1 -maxdepth 1 -type d -print0 | xargs -0 -P "$(nproc)" -I{} bash -lc 'd="{}"; b="$(basename "$d")"; python -m particulate.data.cache_points --root "$d" --output_path "$PARTNET_CACHED_DIR/$b" --num_points 100000 --ratio_sharp 0 --format eval'
 ```
 
-Then run evaluation:
+Then, run inference on all assets (sequential; GPU):
 
+```bash
+mkdir -p "$PARTNET_INFERENCE_DIR" && while IFS= read -r -d '' mesh; do subdir="$(basename "$(dirname "$mesh")")"; mkdir -p "$PARTNET_INFERENCE_DIR/$subdir"; python infer.py --input_mesh "$mesh" --eval --output_dir "$PARTNET_INFERENCE_DIR/$subdir" --up_dir Z; done < <(find "$PARTNET_PROPROCESSED_DIR" -name 'original.obj' -print0)
 ```
-python evaluate.py --gt_dir "$GT_CACHE_DIR" --result_dir "$BASE_OUT" --output_dir "EVAL_OUT"
+
+Finally, perform evaluation:
+
+```bash
+mkdir -p "$PARTNET_EVAL_DIR" && python evaluate.py --gt_dir "$PARTNET_CACHED_DIR" --result_dir "$PARTNET_INFERENCE_DIR" --output_dir "$PARTNET_EVAL_DIR"
 ```
 
 </details>
 
+
 <details>
 <summary>Step-by-step guide to reproduce our results on Lightwheel test set</summary>
 
-Assuming the USD assets in the test set is located at `$LIGHTWHEEL_TEST_SET/{object_identifier}/{object_identifier}.usd`, follow the following steps. 
+Assuming the USD assets in the test set are located at `$LIGHTWHEEL_ROOT/{object_identifier}/{object_identifier}.usd`, first preprocess the assets:
 
-Let's say:
-```
-DATA_DIR=$PARTNET_TEST_SET/*/mobility.urdf
-PRE_DIR=preprocessed_data/
-GT_CACHE_DIR=cached_groundtruth/
-EVAL_OUT=evaluation/
-```
-Preprocess the source data first: 
-```
-python -m particulate.data.process_parallel "/$LIGHTWHEEL_TEST_SET/*/*.usd" "$PRE_DIR" --dataset lightwheel
+```bash
+mkdir -p "$LIGHTWHEEL_PROPROCESSED_DIR" && find "$LIGHTWHEEL_ROOT" -mindepth 2 -maxdepth 2 -name '*.usd' -path "$LIGHTWHEEL_ROOT/*/*.usd" -print0 | xargs -0 -P "$(nproc)" -I{} bash -lc 'usd="{}"; obj="$(basename "$(dirname "$usd")")"; python -m particulate.data.process_usd "$usd" "$LIGHTWHEEL_PROPROCESSED_DIR/$obj"'
 ```
 
-`cache_gt.py` turns the preprocessed assets into cached GT `.npz` files (one per asset) used by `evaluate.py`.
+Then, from the preprocessed folders, we sample `N=100000` points uniformly and cache them together with the articulation attributes:
 
-```
-python -m particulate.data.cache_gt --root_dir "$PRE_DIR" --output_dir "$GT_CACHE_DIR"
-```
-
-Run `infer.py` for every test asset mesh and save predictions in a consistent directory structure.
-
-```
-BASE_OUT=/directory/of/all/prediction/
-
-find $PRE_DIR -name '*.obj' -print0 |
-while IFS= read -r -d '' mesh; do
-  subdir=$(basename "$(dirname "$mesh")")
-  python infer.py \
-    --input_mesh "$mesh" \
-    --eval \
-    --output_dir "$BASE_OUT/$subdir" \
-    --up_dir Z
-done
+```bash
+mkdir -p "$LIGHTWHEEL_CACHED_DIR" && find "$LIGHTWHEEL_PROPROCESSED_DIR" -mindepth 1 -maxdepth 1 -type d -print0 | xargs -0 -P "$(nproc)" -I{} bash -lc 'd="{}"; b="$(basename "$d")"; python -m particulate.data.cache_points --root "$d" --output_path "$LIGHTWHEEL_CACHED_DIR/$b" --num_points 100000 --ratio_sharp 0 --format eval'
 ```
 
-Then run evaluation:
+Then, run inference on all assets:
 
+```bash
+mkdir -p "$LIGHTWHEEL_INFERENCE_DIR" && while IFS= read -r -d '' mesh; do subdir="$(basename "$(dirname "$mesh")")"; mkdir -p "$LIGHTWHEEL_INFERENCE_DIR/$subdir"; python infer.py --input_mesh "$mesh" --eval --output_dir "$LIGHTWHEEL_INFERENCE_DIR/$subdir" --up_dir Z; done < <(find "$LIGHTWHEEL_PROPROCESSED_DIR" -name 'original.obj' -print0)
 ```
-python evaluate.py --gt_dir "$GT_CACHE_DIR" --result_dir "$BASE_OUT" --output_dir "EVAL_OUT"
+
+Finally, perform evaluation:
+
+```bash
+mkdir -p "$LIGHTWHEEL_EVAL_DIR" && python evaluate.py --gt_dir $LIGHTWHEEL_CACHED_DIR --result_dir $LIGHTWHEEL_INFERENCE_DIR --output_dir $LIGHTWHEEL_EVAL_DIR
 ```
 
 </details>

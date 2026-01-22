@@ -42,7 +42,7 @@ def export_animated_glb_file(
         prismatic_axis: Direction vectors for prismatic joints
         prismatic_range: [low, high] displacement limits for prismatic joints
         animation_frames: Number of keyframes in the animation
-        output_path: Path where the GLB file will be saved
+        output_path: Path to the output animated GLB file
         include_axes: Whether to include axis visualization meshes
         axes_meshes: List of trimesh objects representing axis visualizations (arrows/rings)
     
