@@ -1,8 +1,10 @@
 import argparse
 import os
+import glob
+import re
 from datetime import datetime
 from pathlib import Path
-
+from tqdm import tqdm
 import numpy as np
 import torch
 import trimesh
@@ -188,43 +190,15 @@ def save_articulated_meshes(mesh, face_indices, outputs, output_path, strict, an
     )
 
 
-def main(args):
-    # Setup output directory
-    os.makedirs(args.output_dir, exist_ok=True)
-    
-    # Load model configuration
-    print(f"Loading model config from {args.model_config}")
-    cfg = OmegaConf.load(args.model_config)
+def infer_single_mesh(mesh_path, output_dir, model, args):    # Load mesh
+    print(f"Loading mesh from {mesh_path}")
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Initialize model
-    print("Initializing model...")
-    model_size = cfg.get('model_size', 'B')
-    cfg.pop('model_size', None)
-    model = eval(f"PAT_{model_size}")(**cfg)
-    model.eval()
-    
-    # Load weights
-    print("Loading model from checkpoint...")
-    if args.ckpt_path is None:
-        model_checkpoint = hf_hub_download(repo_id="rayli/Particulate", filename=f"model.pt")
-    else:
-        model_checkpoint = args.ckpt_path
-    model.load_state_dict(torch.load(model_checkpoint, map_location="cpu"))
-    model.to("cuda")
-    
-    # Download PartField model if needed
-    partfield_model_dir = os.path.join("PartField", "model")
-    os.makedirs(partfield_model_dir, exist_ok=True)
-    hf_hub_download(repo_id="mikaelaangel/partfield-ckpt", filename="model_objaverse.ckpt", local_dir=partfield_model_dir)
-    print("Models loaded successfully.")
-    
-    # Load mesh
-    print(f"Loading mesh from {args.input_mesh}")
-    if args.input_mesh.endswith(".obj"):
-        verts, faces = load_obj_raw_preserve(Path(args.input_mesh))
+    if mesh_path.endswith(".obj"):
+        verts, faces = load_obj_raw_preserve(Path(mesh_path))
         mesh = trimesh.Trimesh(vertices=verts, faces=faces)
     else:
-        mesh = trimesh.load(args.input_mesh, process=False)
+        mesh = trimesh.load(mesh_path, process=False)
         if isinstance(mesh, trimesh.Scene):
             mesh = trimesh.util.concatenate(mesh.geometry.values())
             
@@ -254,7 +228,7 @@ def main(args):
         prismatic_range
     ) = save_articulated_meshes(
         mesh_transformed, face_indices, outputs,
-        output_path=args.output_dir,
+        output_path=output_dir,
         strict=strict,
         animation_frames=args.animation_frames,
         save_name=timestamp
@@ -262,7 +236,7 @@ def main(args):
         
     # Export URDF
     if args.export_urdf:
-        urdf_output_path = os.path.join(args.output_dir, f"urdf_{timestamp}", "model.urdf")
+        urdf_output_path = os.path.join(output_dir, f"urdf_{timestamp}", "model.urdf")
         export_urdf(
             mesh_parts_original,
             unique_part_ids,
@@ -279,7 +253,7 @@ def main(args):
         
     # Export MJCF
     if args.export_mjcf:
-        mjcf_output_path = os.path.join(args.output_dir, f"mjcf_{timestamp}", "model.xml")
+        mjcf_output_path = os.path.join(output_dir, f"mjcf_{timestamp}", "model.xml")
         export_mjcf(
             mesh_parts_original,
             unique_part_ids,
@@ -296,7 +270,7 @@ def main(args):
 
     # Save results for evaluation
     if args.eval:
-        eval_result_output_dir = os.path.join(args.output_dir, "eval")
+        eval_result_output_dir = os.path.join(output_dir, "eval")
         os.makedirs(eval_result_output_dir, exist_ok=True)
         mesh.export(os.path.join(eval_result_output_dir, "pred.obj"))
 
@@ -343,6 +317,62 @@ def main(args):
             prismatic_axis=prismatic_axis[unique_part_ids],
             prismatic_range=prismatic_range[unique_part_ids],
         )
+
+
+def main(args):
+    # Setup output directory
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Load model configuration
+    print(f"Loading model config from {args.model_config}")
+    cfg = OmegaConf.load(args.model_config)
+
+    # Initialize model
+    print("Initializing model...")
+    model_size = cfg.get('model_size', 'B')
+    cfg.pop('model_size', None)
+    model = eval(f"PAT_{model_size}")(**cfg)
+    model.eval()
+    
+    # Load weights
+    print("Loading model from checkpoint...")
+    if args.ckpt_path is None:
+        model_checkpoint = hf_hub_download(repo_id="rayli/Particulate", filename=f"model.pt")
+    else:
+        model_checkpoint = args.ckpt_path
+    model.load_state_dict(torch.load(model_checkpoint, map_location="cpu"))
+    model.to("cuda")
+    
+    # Download PartField model if needed
+    partfield_model_dir = os.path.join("PartField", "model")
+    os.makedirs(partfield_model_dir, exist_ok=True)
+    hf_hub_download(repo_id="mikaelaangel/partfield-ckpt", filename="model_objaverse.ckpt", local_dir=partfield_model_dir)
+    print("Models loaded successfully.")
+
+    if "*" in args.input_mesh:
+        input_meshes = sorted(glob.glob(args.input_mesh))
+        output_dirs = []
+        regex_pattern = re.escape(args.input_mesh)
+        regex_pattern = regex_pattern.replace(r'\*', r'([^/]+)')
+        regex_pattern = '^' + regex_pattern + '$'
+        
+        for input_mesh in input_meshes:
+            match = re.match(regex_pattern, input_mesh)
+            if match:
+                matched_segments = match.groups()
+                dir_name = "-".join(matched_segments) if matched_segments else Path(input_mesh).stem
+            else:
+                dir_name = Path(input_mesh).stem
+            output_dirs.append(Path(args.output_dir) / dir_name)
+    else:
+        input_meshes, output_dirs = [args.input_mesh], [Path(args.output_dir)]
+
+    for input_mesh, output_dir in tqdm(zip(input_meshes, output_dirs), total=len(input_meshes), desc="Processing meshes"):
+        try:
+            infer_single_mesh(input_mesh, output_dir, model, args)
+        except Exception as e:
+            print(f"Error processing {input_mesh}: {e}")
+            continue
 
 
 if __name__ == "__main__":

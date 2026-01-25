@@ -82,10 +82,10 @@ Then, from the preprocessed folders, we sample `N=100000` points uniformly and c
 mkdir -p "$PARTNET_CACHED_DIR" && find "$PARTNET_PROPROCESSED_DIR" -mindepth 1 -maxdepth 1 -type d -print0 | xargs -0 -P "$(nproc)" -I{} bash -lc 'd="{}"; b="$(basename "$d")"; python -m particulate.data.cache_points --root "$d" --output_path "$PARTNET_CACHED_DIR/$b" --num_points 100000 --ratio_sharp 0 --format eval'
 ```
 
-Then, run inference on all assets (sequential; GPU):
+Then, run inference on all assets:
 
 ```bash
-mkdir -p "$PARTNET_INFERENCE_DIR" && while IFS= read -r -d '' mesh; do subdir="$(basename "$(dirname "$mesh")")"; mkdir -p "$PARTNET_INFERENCE_DIR/$subdir"; python infer.py --input_mesh "$mesh" --eval --output_dir "$PARTNET_INFERENCE_DIR/$subdir" --up_dir Z; done < <(find "$PARTNET_PROPROCESSED_DIR" -name 'original.obj' -print0)
+mkdir -p "$PARTNET_INFERENCE_DIR" && python infer.py --input_mesh "$PARTNET_PROPROCESSED_DIR/*/original.obj" --eval --output_dir "$PARTNET_INFERENCE_DIR" --up_dir Z
 ```
 
 Finally, perform evaluation:
@@ -115,7 +115,7 @@ mkdir -p "$LIGHTWHEEL_CACHED_DIR" && find "$LIGHTWHEEL_PROPROCESSED_DIR" -mindep
 Then, run inference on all assets:
 
 ```bash
-mkdir -p "$LIGHTWHEEL_INFERENCE_DIR" && while IFS= read -r -d '' mesh; do subdir="$(basename "$(dirname "$mesh")")"; mkdir -p "$LIGHTWHEEL_INFERENCE_DIR/$subdir"; python infer.py --input_mesh "$mesh" --eval --output_dir "$LIGHTWHEEL_INFERENCE_DIR/$subdir" --up_dir Z; done < <(find "$LIGHTWHEEL_PROPROCESSED_DIR" -name 'original.obj' -print0)
+mkdir -p "$LIGHTWHEEL_INFERENCE_DIR" && python infer.py --input_mesh "$LIGHTWHEEL_PROPROCESSED_DIR/*/original.obj" --eval --output_dir "$LIGHTWHEEL_INFERENCE_DIR" --up_dir Z
 ```
 
 Finally, perform evaluation:
