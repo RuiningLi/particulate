@@ -116,6 +116,188 @@ def load_model_from_path(path: Path) -> Tuple[np.ndarray, np.ndarray]:
         return mesh.vertices, mesh.faces
 
 
+def create_box_mesh(size: Sequence[float]) -> Tuple[np.ndarray, np.ndarray]:
+    """Creates a triangular mesh for a box with given dimensions.
+    
+    Args:
+        size: Box dimensions (x, y, z)
+    
+    Returns:
+        Tuple of (vertices, faces) where vertices is an (8, 3) array
+        and faces is a (12, 3) array of triangle indices.
+    """
+    sx, sy, sz = float(size[0]), float(size[1]), float(size[2])
+    
+    # Create 8 vertices for the box corners (centered at origin)
+    vertices = np.array([
+        [-sx/2, -sy/2, -sz/2],  # 0: back-bottom-left
+        [ sx/2, -sy/2, -sz/2],  # 1: back-bottom-right
+        [ sx/2,  sy/2, -sz/2],  # 2: back-top-right
+        [-sx/2,  sy/2, -sz/2],  # 3: back-top-left
+        [-sx/2, -sy/2,  sz/2],  # 4: front-bottom-left
+        [ sx/2, -sy/2,  sz/2],  # 5: front-bottom-right
+        [ sx/2,  sy/2,  sz/2],  # 6: front-top-right
+        [-sx/2,  sy/2,  sz/2],  # 7: front-top-left
+    ], dtype=np.float64)
+    
+    # Create 12 triangular faces (2 per side, 6 sides)
+    # Each face is defined by 3 vertex indices in counter-clockwise order
+    faces = np.array([
+        # Front face (z+)
+        [4, 5, 6],
+        [4, 6, 7],
+        # Back face (z-)
+        [1, 0, 3],
+        [1, 3, 2],
+        # Right face (x+)
+        [5, 1, 2],
+        [5, 2, 6],
+        # Left face (x-)
+        [0, 4, 7],
+        [0, 7, 3],
+        # Top face (y+)
+        [7, 6, 2],
+        [7, 2, 3],
+        # Bottom face (y-)
+        [0, 1, 5],
+        [0, 5, 4],
+    ], dtype=np.int32)
+    
+    return vertices, faces
+
+
+def create_cylinder_mesh(radius: float, length: float, segments: int = 32) -> Tuple[np.ndarray, np.ndarray]:
+    """Creates a triangular mesh for a cylinder with given dimensions.
+    
+    Args:
+        radius: Radius of the cylinder
+        length: Length (height) of the cylinder along the z-axis
+        segments: Number of radial segments for tessellation (default: 32)
+    
+    Returns:
+        Tuple of (vertices, faces) as numpy arrays.
+        The cylinder is centered at origin with axis along z.
+    """
+    r = float(radius)
+    h = float(length)
+    
+    vertices = []
+    faces = []
+    
+    # Create vertices for bottom and top circles
+    for z_sign, z_pos in [(-1, -h/2), (1, h/2)]:
+        for i in range(segments):
+            angle = 2 * np.pi * i / segments
+            x = r * np.cos(angle)
+            y = r * np.sin(angle)
+            vertices.append([x, y, z_pos])
+    
+    # Add center vertices for caps
+    center_bottom_idx = len(vertices)
+    vertices.append([0, 0, -h/2])
+    center_top_idx = len(vertices)
+    vertices.append([0, 0, h/2])
+    
+    # Create side faces (connecting bottom and top rings)
+    for i in range(segments):
+        next_i = (i + 1) % segments
+        # Bottom ring indices
+        b1 = i
+        b2 = next_i
+        # Top ring indices
+        t1 = i + segments
+        t2 = next_i + segments
+        
+        # Two triangles per quad on the side
+        faces.append([b1, t1, t2])
+        faces.append([b1, t2, b2])
+    
+    # Create bottom cap faces (facing down, so reversed winding)
+    for i in range(segments):
+        next_i = (i + 1) % segments
+        faces.append([center_bottom_idx, next_i, i])
+    
+    # Create top cap faces (facing up)
+    for i in range(segments):
+        next_i = (i + 1) % segments
+        faces.append([center_top_idx, i + segments, next_i + segments])
+    
+    return np.array(vertices, dtype=np.float64), np.array(faces, dtype=np.int32)
+
+
+def create_sphere_mesh(radius: float, segments: int = 32, rings: int = 16) -> Tuple[np.ndarray, np.ndarray]:
+    """Creates a triangular mesh for a sphere with given radius.
+    
+    Args:
+        radius: Radius of the sphere
+        segments: Number of longitudinal segments (default: 32)
+        rings: Number of latitudinal rings (default: 16)
+    
+    Returns:
+        Tuple of (vertices, faces) as numpy arrays.
+        The sphere is centered at origin.
+    """
+    r = float(radius)
+    
+    vertices = []
+    faces = []
+    
+    # Add top pole vertex
+    vertices.append([0, 0, r])
+    
+    # Generate vertices ring by ring (excluding poles)
+    for ring in range(1, rings):
+        phi = np.pi * ring / rings  # Latitude angle from top
+        z = r * np.cos(phi)
+        ring_radius = r * np.sin(phi)
+        
+        for seg in range(segments):
+            theta = 2 * np.pi * seg / segments  # Longitude angle
+            x = ring_radius * np.cos(theta)
+            y = ring_radius * np.sin(theta)
+            vertices.append([x, y, z])
+    
+    # Add bottom pole vertex
+    vertices.append([0, 0, -r])
+    
+    # Generate faces
+    # Top cap (connect to top pole)
+    for seg in range(segments):
+        next_seg = (seg + 1) % segments
+        v1 = 0  # Top pole
+        v2 = 1 + seg
+        v3 = 1 + next_seg
+        faces.append([v1, v2, v3])
+    
+    # Middle rings
+    for ring in range(rings - 2):
+        for seg in range(segments):
+            next_seg = (seg + 1) % segments
+            
+            # Current ring
+            v1 = 1 + ring * segments + seg
+            v2 = 1 + ring * segments + next_seg
+            # Next ring
+            v3 = 1 + (ring + 1) * segments + next_seg
+            v4 = 1 + (ring + 1) * segments + seg
+            
+            # Two triangles per quad
+            faces.append([v1, v2, v3])
+            faces.append([v1, v3, v4])
+    
+    # Bottom cap (connect to bottom pole)
+    bottom_pole_idx = len(vertices) - 1
+    last_ring_start = 1 + (rings - 2) * segments
+    for seg in range(segments):
+        next_seg = (seg + 1) % segments
+        v1 = last_ring_start + seg
+        v2 = last_ring_start + next_seg
+        v3 = bottom_pole_idx
+        faces.append([v1, v2, v3])
+    
+    return np.array(vertices, dtype=np.float64), np.array(faces, dtype=np.int32)
+
+
 # ─────────────────────────── Regex helpers (OBJ only) ──────────────────────────
 _TX_RE_NEWMTL = re.compile(r"^\s*newmtl\s+(\S+)")
 _TX_RE_MAP    = re.compile(r"^\s*map_\w+\s+(.+)$")
@@ -446,6 +628,116 @@ def load_urdf(urdf_path: str) -> Optional[URDF]:
         os.unlink(temp_urdf_path)
 
 
+def _merge_fixed_joints(
+    robot: Any,
+    all_meshes: List[Tuple[np.ndarray, np.ndarray, np.ndarray, str, Path]],
+    link_hierarchy: List[Tuple[str, str]],
+    link_axes_plucker: Dict[str, np.ndarray],
+    link_range: Dict[str, np.ndarray],
+    dummy_links: Set[str],
+) -> Tuple[
+    List[Tuple[np.ndarray, np.ndarray, np.ndarray, str, Path]],
+    List[Tuple[str, str]],
+    Dict[str, np.ndarray],
+    Dict[str, np.ndarray],
+    Set[str],
+]:
+    """Merges links connected by fixed joints into single links.
+    
+    Args:
+        robot: The URDF robot object
+        all_meshes: List of mesh data tuples
+        link_hierarchy: List of (parent, child) link relationships
+        link_axes_plucker: Dict mapping link names to plucker axes
+        link_range: Dict mapping link names to joint ranges
+        dummy_links: Set of links without meshes
+        
+    Returns:
+        Updated versions of all input data structures with merged links
+    """
+    # Find all fixed joints
+    fixed_joints = [j for j in robot.joints if j.type == "fixed"]
+    
+    # Build union-find structure to merge links connected by fixed joints
+    link_to_merged = {}  # Maps original link name to merged group representative
+    
+    def find_root(link_name: str) -> str:
+        """Find the root representative of a link's merged group."""
+        if link_name not in link_to_merged:
+            link_to_merged[link_name] = link_name
+            return link_name
+        if link_to_merged[link_name] != link_name:
+            link_to_merged[link_name] = find_root(link_to_merged[link_name])
+        return link_to_merged[link_name]
+    
+    def union(link1: str, link2: str) -> None:
+        """Merge two links into the same group."""
+        root1 = find_root(link1)
+        root2 = find_root(link2)
+        if root1 != root2:
+            # Always merge to the lexicographically smaller name for consistency
+            if root1 < root2:
+                link_to_merged[root2] = root1
+            else:
+                link_to_merged[root1] = root2
+    
+    # Initialize all links
+    for link in robot.links:
+        find_root(link.name)
+    
+    # Merge links connected by fixed joints
+    for joint in fixed_joints:
+        union(joint.parent, joint.child)
+    
+    # Normalize all mappings to point to root
+    for link in list(link_to_merged.keys()):
+        find_root(link)
+    
+    # Update all_meshes to use merged link names
+    merged_meshes = []
+    for verts, faces, transform, link_name, source_id in all_meshes:
+        merged_link = find_root(link_name)
+        merged_meshes.append((verts, faces, transform, merged_link, source_id))
+    
+    # Update link_hierarchy to only include non-fixed joints
+    merged_hierarchy = []
+    for parent, child in link_hierarchy:
+        merged_parent = find_root(parent)
+        merged_child = find_root(child)
+        # Only keep the relationship if parent and child are in different merged groups
+        if merged_parent != merged_child:
+            merged_hierarchy.append((merged_parent, merged_child))
+    
+    # Remove duplicates from hierarchy
+    merged_hierarchy = list(set(merged_hierarchy))
+    
+    # Update link_axes_plucker - only keep axes for links with movable joints
+    merged_axes_plucker = {}
+    for link_name, axes in link_axes_plucker.items():
+        merged_link = find_root(link_name)
+        # Only keep if this link is actually a child in a non-fixed joint
+        if any(child == merged_link for _, child in merged_hierarchy):
+            if merged_link not in merged_axes_plucker:
+                merged_axes_plucker[merged_link] = axes
+    
+    # Update link_range - only keep ranges for links with movable joints
+    merged_range = {}
+    for link_name, range_val in link_range.items():
+        merged_link = find_root(link_name)
+        # Only keep if this link is actually a child in a non-fixed joint
+        if any(child == merged_link for _, child in merged_hierarchy):
+            if merged_link not in merged_range:
+                merged_range[merged_link] = range_val
+    
+    # Update dummy_links - a merged link is dummy only if it has no meshes
+    # (i.e., all its constituent links were dummy)
+    links_with_meshes = set(link_name for _, _, _, link_name, _ in merged_meshes)
+    all_merged_links = set(find_root(link.name) for link in robot.links)
+    merged_dummy_links = all_merged_links - links_with_meshes
+    
+    return merged_meshes, merged_hierarchy, merged_axes_plucker, merged_range, merged_dummy_links
+
+
 def load_mesh_from_urdf(
     urdf_path: str,
     joint_pos: Dict[str, float] = {},
@@ -466,9 +758,9 @@ def load_mesh_from_urdf(
                 - np.ndarray: The mesh vertices
                 - np.ndarray: The mesh faces
                 - np.ndarray: The transform matrix
-                - str: The name of the link
+                - str: The name of the link (merged if connected by fixed joints)
                 - Path: The original file path
-            2. A list of tuples containing parent-child link relationships
+            2. A list of tuples containing parent-child link relationships (excluding fixed joints)
             3. A set of dummy links which do not have any meshes
 
     Raises:
@@ -592,24 +884,71 @@ def load_mesh_from_urdf(
                 continue
             
             for visual in visual_elements:
-                if visual.geometry and hasattr(visual.geometry, 'filename'):
-                    mesh_path = visual.geometry.filename
-                    assert os.path.exists(mesh_path), f"Mesh file does not exist: {mesh_path}"
+                if visual.geometry:
+                    loaded_verts = None
+                    loaded_faces = None
+                    source_identifier = None
                     
-                    try:
-                        loaded_verts, loaded_faces = load_model_from_path(Path(mesh_path))
+                    # Handle mesh files
+                    if hasattr(visual.geometry, 'filename'):
+                        mesh_path = visual.geometry.filename
+                        assert os.path.exists(mesh_path), f"Mesh file does not exist: {mesh_path}"
                         
+                        try:
+                            loaded_verts, loaded_faces = load_model_from_path(Path(mesh_path))
+                            source_identifier = Path(mesh_path)
+                        except Exception as e:
+                            print(f"Failed to load mesh {mesh_path}: {e}")
+                            return []
+                    
+                    # Handle box geometry
+                    elif hasattr(visual.geometry, 'size'):
+                        try:
+                            loaded_verts, loaded_faces = create_box_mesh(visual.geometry.size)
+                            # Use a synthetic identifier for boxes
+                            source_identifier = Path(f"box_{link.name}_{visual.geometry.size[0]}_{visual.geometry.size[1]}_{visual.geometry.size[2]}.virtual")
+                        except Exception as e:
+                            print(f"Failed to create box mesh for link {link.name}: {e}")
+                            return []
+                    
+                    # Handle cylinder geometry
+                    elif hasattr(visual.geometry, 'radius') and hasattr(visual.geometry, 'length'):
+                        try:
+                            loaded_verts, loaded_faces = create_cylinder_mesh(
+                                visual.geometry.radius, 
+                                visual.geometry.length
+                            )
+                            # Use a synthetic identifier for cylinders
+                            source_identifier = Path(f"cylinder_{link.name}_{visual.geometry.radius}_{visual.geometry.length}.virtual")
+                        except Exception as e:
+                            print(f"Failed to create cylinder mesh for link {link.name}: {e}")
+                            return []
+                    
+                    # Handle sphere geometry
+                    elif hasattr(visual.geometry, 'radius'):
+                        try:
+                            loaded_verts, loaded_faces = create_sphere_mesh(visual.geometry.radius)
+                            # Use a synthetic identifier for spheres
+                            source_identifier = Path(f"sphere_{link.name}_{visual.geometry.radius}.virtual")
+                        except Exception as e:
+                            print(f"Failed to create sphere mesh for link {link.name}: {e}")
+                            return []
+                    
+                    # If we successfully loaded geometry, add it to the list
+                    if loaded_verts is not None and loaded_faces is not None:
                         link_transform = link_transforms[link.name]
                         
                         if visual.origin:
                             visual_transform = get_transform_matrix(visual.origin)
                             link_transform = link_transform @ visual_transform
                         
-                        all_meshes.append((loaded_verts, loaded_faces, link_transform, link.name, Path(mesh_path)))
+                        all_meshes.append((loaded_verts, loaded_faces, link_transform, link.name, source_identifier))
                         processed_links.add(link.name)
-                    except Exception as e:
-                        print(f"Failed to load mesh {mesh_path}: {e}")
-                        return []
+        
+        # Merge links connected by fixed joints
+        all_meshes, link_hierarchy, link_axes_plucker, link_range, dummy_links = _merge_fixed_joints(
+            robot, all_meshes, link_hierarchy, link_axes_plucker, link_range, dummy_links
+        )
                     
         return all_meshes, link_hierarchy, link_axes_plucker, link_range, dummy_links
     
@@ -648,18 +987,24 @@ def _process_urdf_single_frame(
         if (p2, c2) in link_hierarchy:
             link_hierarchy.remove((p2, c2))
         link_hierarchy.append((p_new, c_new))
-        if np.all(link_axes_plucker[c1][:3] == 0) and np.all(link_axes_plucker[c_new][6:9] == 0):
-            if verbose: print(f"Replacing {c_new} with {c1} prismatic")
-            link_axes_plucker[c_new][6:] = link_axes_plucker[c1][6:]
-        elif np.all(link_axes_plucker[c1][6:9] == 0) and np.all(link_axes_plucker[c_new][:3] == 0):
-            if verbose: print(f"Replacing {c_new} with {c1} revolute")
-            link_axes_plucker[c_new][:6] = link_axes_plucker[c1][:6]
-        if np.all(link_range[c1][:2] == 0) and np.all(link_range[c_new][2:] == 0):
-            if verbose: print(f"Replacing {c_new} with {c1} prismatic")
-            link_range[c_new][2:] = link_range[c1][2:]
-        elif np.all(link_range[c1][2:] == 0) and np.all(link_range[c_new][:2] == 0):
-            if verbose: print(f"Replacing {c_new} with {c1} revolute")
-            link_range[c_new][:2] = link_range[c1][:2]
+        
+        # Only process axes if both links have entries in the dictionaries
+        if c1 in link_axes_plucker and c_new in link_axes_plucker:
+            if np.all(link_axes_plucker[c1][:3] == 0) and np.all(link_axes_plucker[c_new][6:9] == 0):
+                if verbose: print(f"Replacing {c_new} with {c1} prismatic")
+                link_axes_plucker[c_new][6:] = link_axes_plucker[c1][6:]
+            elif np.all(link_axes_plucker[c1][6:9] == 0) and np.all(link_axes_plucker[c_new][:3] == 0):
+                if verbose: print(f"Replacing {c_new} with {c1} revolute")
+                link_axes_plucker[c_new][:6] = link_axes_plucker[c1][:6]
+        
+        # Only process ranges if both links have entries in the dictionaries
+        if c1 in link_range and c_new in link_range:
+            if np.all(link_range[c1][:2] == 0) and np.all(link_range[c_new][2:] == 0):
+                if verbose: print(f"Replacing {c_new} with {c1} prismatic")
+                link_range[c_new][2:] = link_range[c1][2:]
+            elif np.all(link_range[c1][2:] == 0) and np.all(link_range[c_new][:2] == 0):
+                if verbose: print(f"Replacing {c_new} with {c1} revolute")
+                link_range[c_new][:2] = link_range[c1][:2]
 
     if not meshes:
         return False
@@ -706,17 +1051,27 @@ def _process_urdf_single_frame(
     np.savez(os.path.join(output_dir, "link_axes_plucker.npz"), **link_axes_plucker)
     np.savez(os.path.join(output_dir, "link_range.npz"), **link_range)
     
-    if not os.path.exists(meta_path):
-        link_hierarchy = [
-            (unique_links.index(p), unique_links.index(c)) for p, c in link_hierarchy 
-            if p in unique_links and c in unique_links
-        ]
-
-        np.savez(
-            meta_path,
-            vert_to_bone=np.array(vert_to_link, dtype=np.int8),
-            bone_structure=np.array(link_hierarchy, dtype=np.int8),
+    # Convert link hierarchy to indices
+    link_hierarchy = [
+        (unique_links.index(p), unique_links.index(c)) for p, c in link_hierarchy 
+        if p in unique_links and c in unique_links
+    ]
+    
+    # Verify that vert_to_link matches the total vertex count
+    total_verts = sum(v.shape[0] for v in all_verts)
+    if len(vert_to_link) != total_verts:
+        raise ValueError(
+            f"Vertex count mismatch: vert_to_link has {len(vert_to_link)} entries "
+            f"but all_verts has {total_verts} vertices total"
         )
+    
+    # Always save meta.npz (overwrite if exists) to ensure it matches the OBJ file
+    np.savez(
+        meta_path,
+        vert_to_bone=np.array(vert_to_link, dtype=np.int8),
+        bone_structure=np.array(link_hierarchy, dtype=np.int8),
+    )
+    
     # Save the original obj, without coloring
     combine_meshes_and_save(
         all_verts, all_faces, all_model_paths, 
