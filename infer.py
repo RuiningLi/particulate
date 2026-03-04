@@ -6,6 +6,10 @@ from datetime import datetime
 from pathlib import Path
 from tqdm import tqdm
 import numpy as np
+
+# PyTorch 2.6+ defaults to weights_only=True; checkpoints contain CfgNode
+os.environ.setdefault("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
+
 import torch
 import trimesh
 from huggingface_hub import hf_hub_download
