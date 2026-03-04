@@ -62,7 +62,7 @@ def prepare_inputs(mesh, num_points_global: int = 40000, num_points_decode: int 
 
 
 @torch.no_grad()
-def infer_single_asset(
+def predict_mesh(
     mesh,
     up_dir,
     model,
@@ -190,7 +190,7 @@ def save_articulated_meshes(mesh, face_indices, outputs, output_path, strict, an
     )
 
 
-def infer_single_mesh(mesh_path, output_dir, model, args):    # Load mesh
+def infer_single_mesh(mesh_path, output_dir, model, args):
     print(f"Loading mesh from {mesh_path}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -204,7 +204,7 @@ def infer_single_mesh(mesh_path, output_dir, model, args):    # Load mesh
             
     # Run inference
     print("Running inference...")
-    outputs, face_indices, mesh_transformed = infer_single_asset(
+    outputs, face_indices, mesh_transformed = predict_mesh(
         mesh=mesh,
         up_dir=args.up_dir,
         model=model,
