@@ -1,11 +1,55 @@
 import numpy as np
 import trimesh
+from scipy.spatial import cKDTree
+
+
+def _get_face_centroids(mesh):
+    """Return face centroids in a compact dtype for NN queries."""
+    return np.asarray(mesh.triangles_center, dtype=np.float32)
+
+
+def _query_nearest(tree, query_points):
+    """
+    Query nearest neighbors with all available CPU workers.
+
+    SciPy exposes ``workers`` in cKDTree.query; using -1 lets it parallelize.
+    """
+    return tree.query(query_points, k=1, workers=-1)
+
+
+def assign_undefined_faces_to_nearest_defined(mesh, face_part_ids):
+    """
+    Fill undefined (-1) face labels by nearest defined face label.
+
+    For scalability this uses a KD-tree over defined face centroids.
+    """
+    face_part_ids_filled = face_part_ids.copy()
+    undefined_faces = np.flatnonzero(face_part_ids_filled == -1)
+    if len(undefined_faces) == 0:
+        return face_part_ids_filled
+
+    defined_faces = np.flatnonzero(face_part_ids_filled != -1)
+    if len(defined_faces) == 0:
+        return face_part_ids_filled
+
+    centroids = _get_face_centroids(mesh)
+    tree = cKDTree(centroids[defined_faces])
+    _, nearest_local = _query_nearest(tree, centroids[undefined_faces])
+    nearest_local = np.atleast_1d(nearest_local)
+    nearest_defined_faces = defined_faces[nearest_local]
+
+    face_part_ids_filled[undefined_faces] = face_part_ids_filled[nearest_defined_faces]
+    return face_part_ids_filled
 
 
 def refine_part_ids_strict(mesh, face_part_ids):
     """
-    Refine face part IDs by treating each connected component (CC) in the mesh independently.
-    For each CC, all faces are labeled with the part ID that has the largest surface area in that CC.
+    Refine face part IDs by treating each connected component (CC) independently.
+
+    For each CC:
+    - If it has any defined labels, all faces are overwritten with the dominant
+      part ID by surface area.
+    - If all faces are undefined (-1), assign all faces from the nearest defined CC.
     
     Args:
         mesh: trimesh object
@@ -15,34 +59,76 @@ def refine_part_ids_strict(mesh, face_part_ids):
         refined_face_part_ids: refined part ID for each face [num_faces]
     """
     face_part_ids = face_part_ids.copy()
-    
+
     mesh_components = trimesh.graph.connected_components(
         edges=mesh.face_adjacency,
         nodes=np.arange(len(mesh.faces)),
         min_len=1
     )
-    
-    # For each connected component, find the part ID with the largest surface area
-    for component in mesh_components:
+    mesh_components = [np.array(list(component), dtype=np.int64) for component in mesh_components]
+
+    component_dominant_part_id = {}
+    undefined_components = []
+
+    # For each connected component, find the dominant part ID by surface area.
+    for comp_idx, component in enumerate(mesh_components):
         if len(component) == 0:
             continue
-        
-        part_id_areas = {}
-        for face_idx in component:
-            part_id = face_part_ids[face_idx]
-            if part_id == -1:
-                continue
-            
-            face_area = mesh.area_faces[face_idx]
-            part_id_areas[part_id] = part_id_areas.get(part_id, 0.0) + face_area
-        
-        if len(part_id_areas) == 0:
+
+        component_part_ids = face_part_ids[component]
+        valid_mask = component_part_ids != -1
+        if not np.any(valid_mask):
+            undefined_components.append(comp_idx)
             continue
-        
-        dominant_part_id = max(part_id_areas.keys(), key=lambda pid: part_id_areas[pid])
-        
-        for face_idx in component:
-            face_part_ids[face_idx] = dominant_part_id
+
+        valid_part_ids = component_part_ids[valid_mask].astype(np.int64)
+        valid_face_areas = mesh.area_faces[component[valid_mask]]
+        unique_part_ids, inverse = np.unique(valid_part_ids, return_inverse=True)
+        part_area_sums = np.bincount(inverse, weights=valid_face_areas)
+        dominant_part_id = int(unique_part_ids[np.argmax(part_area_sums)])
+
+        component_dominant_part_id[comp_idx] = dominant_part_id
+        face_part_ids[component] = dominant_part_id
+
+    # Components that are entirely undefined are assigned from the nearest
+    # component that has a defined dominant part label.
+    if undefined_components and component_dominant_part_id:
+        centroids = _get_face_centroids(mesh)
+        face_to_component = np.full(len(mesh.faces), -1, dtype=np.int32)
+        defined_face_chunks = []
+        undefined_face_chunks = []
+        for comp_idx in component_dominant_part_id.keys():
+            comp_faces = mesh_components[comp_idx]
+            face_to_component[comp_faces] = comp_idx
+            defined_face_chunks.append(comp_faces)
+        for comp_idx in undefined_components:
+            comp_faces = mesh_components[comp_idx]
+            face_to_component[comp_faces] = comp_idx
+            undefined_face_chunks.append(comp_faces)
+
+        defined_faces = np.concatenate(defined_face_chunks, axis=0)
+        undefined_faces = np.concatenate(undefined_face_chunks, axis=0)
+        tree = cKDTree(centroids[defined_faces])
+        nearest_dist, nearest_local = _query_nearest(tree, centroids[undefined_faces])
+        nearest_local = np.atleast_1d(nearest_local)
+        nearest_dist = np.atleast_1d(nearest_dist)
+
+        undefined_face_components = face_to_component[undefined_faces]
+        nearest_defined_faces = defined_faces[nearest_local]
+        nearest_defined_components = face_to_component[nearest_defined_faces]
+
+        order = np.argsort(undefined_face_components, kind="mergesort")
+        sorted_undefined_comps = undefined_face_components[order]
+        sorted_dists = nearest_dist[order]
+        sorted_nearest_defined_comps = nearest_defined_components[order]
+
+        unique_undefined_comps, group_start = np.unique(sorted_undefined_comps, return_index=True)
+        group_end = np.concatenate([group_start[1:], np.array([len(sorted_undefined_comps)])])
+
+        for comp_idx, start, end in zip(unique_undefined_comps, group_start, group_end):
+            best_local = start + int(np.argmin(sorted_dists[start:end]))
+            nearest_defined_comp = int(sorted_nearest_defined_comps[best_local])
+            face_part_ids[mesh_components[int(comp_idx)]] = component_dominant_part_id[nearest_defined_comp]
     
     return face_part_ids
 
@@ -123,7 +209,8 @@ def refine_part_ids_nonstrict(mesh, face_part_ids):
     """
     Refine face part IDs to ensure each part ID forms a single connected component.
     
-    For each part ID, if there are multiple disconnected components, the smaller
+    Undefined faces (-1) are first filled from the nearest defined face label.
+    Then, for each part ID, if there are multiple disconnected components, the smaller
     components (by surface area) are reassigned based on adjacent faces' part IDs.
     This is done iteratively until convergence.
     
@@ -135,7 +222,7 @@ def refine_part_ids_nonstrict(mesh, face_part_ids):
         face_part_ids_final: refined part IDs using iterative refinement 
               (ensures each part ID forms a single connected component) [num_faces]
     """
-    face_part_ids_final = face_part_ids.copy()
+    face_part_ids_final = assign_undefined_faces_to_nearest_defined(mesh, face_part_ids)
     
     # Step 1: Find connected components of the original mesh (immutable structure)
     mesh_components = trimesh.graph.connected_components(
@@ -202,12 +289,7 @@ def find_part_ids_for_faces(mesh, part_ids, face_indices, strict=False):
         strict: whether to use strict refinement (each mesh CC gets the dominant part ID)
     
     Returns:
-        tuple: (face_part_ids, face_part_ids_refined_strict, face_part_ids_refined)
-            - face_part_ids: initial part IDs assigned via majority vote [num_faces]
-            - face_part_ids_refined_strict: refined part IDs using strict refinement 
-              (each mesh CC gets the dominant part ID) [num_faces]
-            - face_part_ids_refined: refined part IDs using iterative refinement 
-              (ensures each part ID forms a single connected component) [num_faces]
+        np.ndarray: refined face part IDs [num_faces]
     """
     num_faces = len(mesh.faces)
     face_part_ids = np.full(num_faces, -1, dtype=np.int32)

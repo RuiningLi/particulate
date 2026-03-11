@@ -45,7 +45,7 @@ def prepare_inputs(mesh, num_points_global: int = 40000, num_points_decode: int 
     """Prepare inputs from a mesh file for model inference."""
     sharp_point_ratio = DATA_CONFIG['sharp_point_ratio']
     all_points, _, _, _ = sample_points(mesh, num_points_global, sharp_point_ratio)
-    points, normals, sharp_flag, face_indices = sample_points(mesh, num_points_decode, sharp_point_ratio, at_least_one_point_per_face=True)
+    points, normals, sharp_flag, face_indices = sample_points(mesh, num_points_decode, sharp_point_ratio)
 
     if DATA_CONFIG['normalize_points']:
         bbmin = np.concatenate([all_points, points], axis=0).min(0)
@@ -197,14 +197,28 @@ def save_articulated_meshes(mesh, face_indices, outputs, output_path, strict, an
 def infer_single_mesh(mesh_path, output_dir, model, args):
     print(f"Loading mesh from {mesh_path}")
     output_dir.mkdir(parents=True, exist_ok=True)
+    mesh_ext = Path(mesh_path).suffix.lower()
 
-    if mesh_path.endswith(".obj"):
+    if mesh_ext == ".obj":
         verts, faces = load_obj_raw_preserve(Path(mesh_path))
         mesh = trimesh.Trimesh(vertices=verts, faces=faces)
     else:
         mesh = trimesh.load(mesh_path, process=False)
         if isinstance(mesh, trimesh.Scene):
             mesh = trimesh.util.concatenate(mesh.geometry.values())
+
+    if mesh_ext == ".ply":
+        is_valid_mesh = (
+            isinstance(mesh, trimesh.Trimesh)
+            and mesh.vertices is not None
+            and mesh.faces is not None
+            and len(mesh.vertices) > 0
+            and len(mesh.faces) > 0
+        )
+        if not is_valid_mesh:
+            raise ValueError(
+                f"Invalid .ply mesh '{mesh_path}': expected non-empty vertices and faces."
+            )
             
     # Run inference
     print("Running inference...")
@@ -384,7 +398,7 @@ if __name__ == "__main__":
         raise RuntimeError("CUDA is required for inference")
 
     parser = argparse.ArgumentParser(description="Particulate Inference Script")
-    parser.add_argument("--input_mesh", type=str, required=True, help="Path to input mesh (.obj or .glb)")
+    parser.add_argument("--input_mesh", type=str, required=True, help="Path to input mesh (.obj, .ply, or .glb)")
     parser.add_argument("--output_dir", type=str, default="inference_outputs", help="Directory to save outputs")
     parser.add_argument("--model_config", type=str, default="configs/particulate-B.yaml", help="Path to model config")
     parser.add_argument("--ckpt_path", type=str, default=None, help="Path to model checkpoint")

@@ -152,8 +152,8 @@ def sharp_sample_pointcloud(mesh, num_points: int = 8192):
     return samples, normals, index, sharp_edge_faces, vertex_ids_a, vertex_ids_b
 
 
-def sample_points(mesh, num_points, sharp_point_ratio, at_least_one_point_per_face=False):
-    """Sample points from mesh using sharp edge and uniform sampling."""
+def sample_points(mesh, num_points, sharp_point_ratio):
+    """Sample exactly ``num_points`` from mesh using sharp edge and uniform sampling."""
     num_points_sharp_edges = int(num_points * sharp_point_ratio)
     num_points_uniform = num_points - num_points_sharp_edges
     points_sharp, normals_sharp, edge_indices, sharp_edge_faces, _, _ = sharp_sample_pointcloud(mesh, num_points_sharp_edges)
@@ -163,42 +163,13 @@ def sample_points(mesh, num_points, sharp_point_ratio, at_least_one_point_per_fa
         print(f"Warning: No sharp edges found, sampling all points uniformly")
         num_points_uniform = num_points
 
-    if at_least_one_point_per_face:
-        num_faces = len(mesh.faces)
-
-        face_perm = np.random.permutation(num_faces)
-        points_per_face = []
-        for face_idx in face_perm:
-            r1, r2 = np.random.random(), np.random.random()
-            sqrt_r1 = np.sqrt(r1)
-            u = 1 - sqrt_r1
-            v = sqrt_r1 * (1 - r2)
-            w = sqrt_r1 * r2
-            
-            face = mesh.faces[face_idx]
-            vertices = mesh.vertices[face]
-            
-            point = u * vertices[0] + v * vertices[1] + w * vertices[2]
-            points_per_face.append(point)
-        
-        points_per_face = np.array(points_per_face)
-        normals_per_face = mesh.face_normals[face_perm]
-        
-        num_remaining_points = num_points_uniform - num_faces
-        if num_remaining_points > 0:
-            points_remaining, face_indices_remaining = mesh.sample(num_remaining_points, return_index=True)
-            normals_remaining = mesh.face_normals[face_indices_remaining]
-            
-            points_uniform = np.concatenate([points_per_face, points_remaining], axis=0)
-            normals_uniform = np.concatenate([normals_per_face, normals_remaining], axis=0)
-            face_indices = np.concatenate([face_perm, face_indices_remaining], axis=0)
-        else:
-            points_uniform = points_per_face
-            normals_uniform = normals_per_face
-            face_indices = face_perm
-    else:
+    if num_points_uniform > 0:
         points_uniform, face_indices = mesh.sample(num_points_uniform, return_index=True)
         normals_uniform = mesh.face_normals[face_indices]
+    else:
+        points_uniform = np.zeros((0, 3), dtype=np.float64)
+        normals_uniform = np.zeros((0, 3), dtype=np.float64)
+        face_indices = np.zeros((0,), dtype=np.int32)
 
     points = np.concatenate([points_sharp, points_uniform], axis=0)
     normals = np.concatenate([normals_sharp, normals_uniform], axis=0)
