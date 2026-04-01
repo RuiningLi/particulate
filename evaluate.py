@@ -98,8 +98,8 @@ def evaluate(
         'rest_per_part_avg_giou': np.round(np.mean([result['rest_per_part_avg_giou'] for result in eval_results]), 4),
         'rest_per_part_avg_mIoU': np.round(np.mean([result['rest_per_part_avg_mIoU'] for result in eval_results]), 4),
     }
-    overall_eval_results['fully_per_part_articulated_avg_chamfer'] = np.round(np.mean([result['fully_per_part_articulated_avg_chamfer'] for result in eval_results]), 4)
-    overall_eval_results['fully_per_part_articulated_avg_giou'] = np.round(np.mean([result['fully_per_part_articulated_avg_giou'] for result in eval_results]), 4)
+    overall_eval_results['fully_per_part_articulated_avg_chamfer'] = np.round(np.mean([result['per_state_chamfer_distances'][-1] for result in eval_results]), 4)
+    overall_eval_results['fully_per_part_articulated_avg_giou'] = np.round(np.mean([result['per_state_giou'][-1] for result in eval_results]), 4)
     overall_eval_results['fully_articulated_overall_chamfer_distances'] = np.round(np.mean([result['per_state_overall_chamfer_distances'][-1] for result in eval_results]), 4)
     json.dump(overall_eval_results, open(output_dir / "OVERALL_EVAL_RESULTS.json", "w"), indent=4)
 
