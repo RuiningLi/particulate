@@ -75,21 +75,21 @@ def evaluate(
     eval_results = []
     
     for pred_dir in tqdm(result_dir.glob("*/eval"), desc="Processing samples"):
+        results = process_prediction(pred_dir=pred_dir, num_points=num_points)
+        assert_points_normalized(results['points'])
+
         sample_name = pred_dir.parent.name
+        try:
+            gt = dict(np.load(gt_dir / f"{sample_name}.npz"))
+        except FileNotFoundError as e:
+            print(f"Corresponding ground-truth file of {sample_name} not found: {e}")
+            continue
+
         eval_json = (output_dir / sample_name).with_suffix(".json")
         if eval_json.exists():
             with open(eval_json, "r") as f:
                 eval_result = json.load(f)
-
         else:
-            results = process_prediction(pred_dir=pred_dir, num_points=num_points)
-            assert_points_normalized(results['points'])
-
-            try:
-                gt = dict(np.load(gt_dir / f"{sample_name}.npz"))
-            except FileNotFoundError as e:
-                print(f"Corresponding ground-truth file of {sample_name} not found: {e}")
-                continue
             eval_result = evaluate_inference_results(results, gt, eval_json, hungarian_matching_cost_type='cdist')
         eval_results.append(eval_result)
 
