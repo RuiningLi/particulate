@@ -823,20 +823,20 @@ def evaluate_articulate_result(
 
     return {
         'rest_per_part_avg_chamfer': float(original_avg_chamfer),
-        'fully_per_part_articulated_avg_chamfer': float(avg_articulated_chamfer),
+        'fully_per_part_articulated_avg_chamfer': float(articulated_chamfer_distances[-1]),
         'rest_per_part_avg_giou': float(original_avg_giou),
-        'fully_per_part_articulated_avg_giou': float(avg_articulated_giou),
+        'fully_per_part_articulated_avg_giou': float(articulated_giou_distances[-1]),
         'rest_per_part_avg_mIoU': float(original_avg_mIoU),
-        'fully_per_part_articulated_avg_mIoU': float(avg_articulated_mIoU),
+        'fully_per_part_articulated_avg_mIoU': float(average_mIoU_all[-1]),
         "rest_overall_chamfer": float(overall_original_overall_chamfer), 
-        "fully_articulated_overall_chamfer_distances": float(avg_overall_chamfer_articulated),
+        "fully_articulated_overall_chamfer_distances": float(test_part_to_all_chamfer_avg[-1]),
 
         "rest_per_part_avg_chamfer_nopunish": float(original_avg_chamfer_nopunish),
-        "fully_articulated_avg_chamfer_nopunish": float(avg_articulated_chamfer_nopunish),
+        "fully_articulated_avg_chamfer_nopunish": float(articulated_chamfer_distances_nopunish[-1]),
         "rest_per_part_avg_giou_nopunish": float(original_avg_giou_nopunish),
-        "fully_per_part_articulated_avg_giou_nopunish": float(avg_articulated_giou_nopunish),
+        "fully_per_part_articulated_avg_giou_nopunish": float(articulated_giou_distances_nopunish[-1]),
         "rest_per_part_avg_mIoU_nopunish": float(original_avg_mIoU_nopunish),
-        "fully_per_part_articulated_avg_mIoU_nopunish": float(avg_articulated_mIoU_nopunish),
+        "fully_per_part_articulated_avg_mIoU_nopunish": float(articulated_mIoU_distances_nopunish[-1]),
         
         'per_state_chamfer_distances': [
             float(chamfer) for chamfer in per_state_chamfer_distances

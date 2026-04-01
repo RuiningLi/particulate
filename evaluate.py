@@ -10,6 +10,8 @@ from tqdm import tqdm
 
 from particulate.data_utils import load_obj_raw_preserve
 from particulate.evaluation_utils import evaluate_articulate_result
+import glob
+import os
 
 @torch.no_grad()
 @torch.autocast(device_type='cuda', dtype=torch.bfloat16)
@@ -75,21 +77,21 @@ def evaluate(
     eval_results = []
     
     for pred_dir in tqdm(result_dir.glob("*/eval"), desc="Processing samples"):
-        results = process_prediction(pred_dir=pred_dir, num_points=num_points)
-        assert_points_normalized(results['points'])
-
         sample_name = pred_dir.parent.name
-        try:
-            gt = dict(np.load(gt_dir / f"{sample_name}.npz"))
-        except FileNotFoundError as e:
-            print(f"Corresponding ground-truth file of {sample_name} not found: {e}")
-            continue
-
         eval_json = (output_dir / sample_name).with_suffix(".json")
         if eval_json.exists():
             with open(eval_json, "r") as f:
                 eval_result = json.load(f)
+
         else:
+            results = process_prediction(pred_dir=pred_dir, num_points=num_points)
+            assert_points_normalized(results['points'])
+
+            try:
+                gt = dict(np.load(gt_dir / f"{sample_name}.npz"))
+            except FileNotFoundError as e:
+                print(f"Corresponding ground-truth file of {sample_name} not found: {e}")
+                continue
             eval_result = evaluate_inference_results(results, gt, eval_json, hungarian_matching_cost_type='cdist')
         eval_results.append(eval_result)
 
@@ -98,8 +100,8 @@ def evaluate(
         'rest_per_part_avg_giou': np.round(np.mean([result['rest_per_part_avg_giou'] for result in eval_results]), 4),
         'rest_per_part_avg_mIoU': np.round(np.mean([result['rest_per_part_avg_mIoU'] for result in eval_results]), 4),
     }
-    overall_eval_results['fully_per_part_articulated_avg_chamfer'] = np.round(np.mean([result['fully_per_part_articulated_avg_chamfer'] for result in eval_results]), 4)
-    overall_eval_results['fully_per_part_articulated_avg_giou'] = np.round(np.mean([result['fully_per_part_articulated_avg_giou'] for result in eval_results]), 4)
+    overall_eval_results['fully_per_part_articulated_avg_chamfer'] = np.round(np.mean([result['per_state_chamfer_distances'][-1] for result in eval_results]), 4)
+    overall_eval_results['fully_per_part_articulated_avg_giou'] = np.round(np.mean([result['per_state_giou'][-1] for result in eval_results]), 4)
     overall_eval_results['fully_articulated_overall_chamfer_distances'] = np.round(np.mean([result['per_state_overall_chamfer_distances'][-1] for result in eval_results]), 4)
     json.dump(overall_eval_results, open(output_dir / "OVERALL_EVAL_RESULTS.json", "w"), indent=4)
 
