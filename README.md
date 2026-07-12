@@ -149,10 +149,10 @@ mkdir -p "$LIGHTWHEEL_EVAL_DIR" && python evaluate.py --gt_dir $LIGHTWHEEL_CACHE
 ## Citation
 
 ```bibtex
-@article{li2025particulate,
-    title   = {Particulate: Feed-Forward 3D Object Articulation},
-    author  = {Ruining Li and Yuxin Yao and Chuanxia Zheng and Christian Rupprecht and Joan Lasenby and Shangzhe Wu and Andrea Vedaldi},
-    journal = {arXiv preprint arXiv:2512.11798},
-    year    = {2025}
+@inproceedings{li2026particulate,
+  title     = {Particulate: Feed-Forward 3D Object Articulation},
+  author    = {Li, Ruining and Yao, Yuxin and Zheng, Chuanxia and Rupprecht, Christian and Lasenby, Joan and Wu, Shangzhe and Vedaldi, Andrea},
+  booktitle = {CVPR},
+  year      = {2026}
 }
 ```
