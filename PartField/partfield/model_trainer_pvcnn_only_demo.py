@@ -48,7 +48,7 @@ class Model(pl.LightningModule):
         if self.use_pvcnn:
             self.pvcnn = TriPlanePC2Encoder(
                 cfg.pvcnn,
-                device="cuda",
+                device="cuda" if torch.cuda.is_available() else "cpu",
                 shape_min=-1, 
                 shape_length=2,
                 use_2d_feat=self.use_2d_feat) #.cuda()
@@ -283,4 +283,4 @@ class Model(pl.LightningModule):
 
         print("Time elapsed: " + str(time.time()-starttime))
             
-        return 
+        return
