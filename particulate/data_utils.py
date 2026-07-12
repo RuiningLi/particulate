@@ -1,11 +1,24 @@
 from pathlib import Path
-from typing import Tuple
+from typing import List, Tuple
 
 import numpy as np
 
 
 AXES_PLUCKER_DIM = 12
 RANGE_DIM = 4
+
+
+def normalize_meshes(all_verts: List[np.ndarray]) -> Tuple[List[np.ndarray], float, float, float, float]:
+    """Center and uniformly scale point sets to fit in a unit bounding box."""
+    bounds_min = np.min(np.concatenate(all_verts, axis=0), axis=0)
+    bounds_max = np.max(np.concatenate(all_verts, axis=0), axis=0)
+    center = (bounds_min + bounds_max) / 2
+    extent = float(np.max(bounds_max - bounds_min))
+    if extent <= 0:
+        raise ValueError("Cannot normalize a point set with zero extent")
+    scale = 1.0 / extent
+    normalized = [(verts - center) * scale for verts in all_verts]
+    return normalized, *center.tolist(), scale
 
 
 def load_obj_raw_preserve(path: Path) -> Tuple[np.ndarray, np.ndarray]:

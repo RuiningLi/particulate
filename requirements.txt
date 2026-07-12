@@ -30,3 +30,6 @@ omegaconf
 diffusers
 scipy
 pygltflib
+accelerate
+transformers
+wandb

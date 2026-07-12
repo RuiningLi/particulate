@@ -1,0 +1,66 @@
+# Released Particulate-B training recipe. Replace dataset paths before training.
+exp_name: particulate-B
+output_dir: ./runs
+
+dataset_args:
+  dataset_type: OntheFlyArticulated3DDataset
+  num_points: 2048
+  normalize_points: true
+  compute_feat_on_the_fly: true
+  sharp_point_ratio: 0.5
+  resting_state_prob: 0.25
+  max_parts: 16
+  normal_dropout_rate: 0.3
+  use_augmentation: true
+  random_scale: [0.95, 1.05]
+  random_translation_std: 0.02
+  random_rotation_deg_std: 0
+  datasets:
+    - root: /path/to/grscenes/cached-points
+      data_split_file: /path/to/grscenes/data-split.json
+      sampling_rate: 0.5
+    - root: /path/to/partnet/cached-points
+      data_split_file: /path/to/partnet/data-split.json
+      sampling_rate: 0.5
+
+batch_size: 16
+num_workers: 8
+samples_per_epoch: 102400
+learning_rate: 5.0e-7
+scale_lr: true
+lr_warmup_steps: 1000
+adam_beta1: 0.9
+adam_beta2: 0.999
+adam_weight_decay: 0.01
+adam_epsilon: 1.0e-8
+max_train_steps: 100000
+max_grad_norm: 1.0
+gradient_accumulation_steps: 1
+
+# These values exactly match the released Particulate-B checkpoint.
+model_type: B
+model_input_dim: 448
+model_dropout: 0.1
+model_use_normals: true
+model_max_parts: 16
+model_use_part_id_embedding: true
+model_use_raw_coords: true
+model_use_point_features_for_motion_decoding: false
+model_num_mask_hypotheses: 1
+model_motion_representation: per_point_closest
+
+loss_weight_point_mask: 1.0
+loss_weight_dice: 1.0
+loss_weight_motion_hierarchy: 1.0
+loss_weight_part_motion_classification: 1.0
+loss_weight_part_motion_axis_revolute: 1.0
+loss_weight_part_motion_axis_prismatic: 1.0
+loss_weight_part_motion_range_revolute: 0.1
+loss_weight_part_motion_range_prismatic: 1.0
+loss_weight_point_closest_point_on_axis: 1.0
+
+log_interval: 10
+ckpt_interval: 10000
+seed: 42
+logger_type: wandb  # Set to none to disable experiment tracking.
+resume_from_checkpoint: null

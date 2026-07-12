@@ -142,7 +142,6 @@ class PAT(nn.Module):
         use_part_id_embedding: bool = True,
         use_raw_coords: bool = False,
         use_point_features_for_motion_decoding: bool = False,
-        point_feature_random_ratio: float = 0.0,
         num_mask_hypotheses: int = 1,
         motion_representation: str = 'per_part_plucker',  # one of ["per_part_plucker", "per_point_closest"]
     ):
@@ -194,39 +193,35 @@ class PAT(nn.Module):
             ])
             self.point_mask_decoding_func = self._point_mask_decoding_func_multi
 
-        self.use_point_features_for_motion_decoding = use_point_features_for_motion_decoding
-        self.point_feature_random_ratio = point_feature_random_ratio
+        if use_point_features_for_motion_decoding:
+            raise ValueError("The released checkpoint does not use pooled point features for motion decoding")
 
-        part_hierarchy_input_dim = hidden_size * 4 if self.use_point_features_for_motion_decoding else hidden_size * 2
         self.part_hierarchy_decoder = nn.Sequential(
-            nn.Linear(part_hierarchy_input_dim, hidden_size * 4),
+            nn.Linear(hidden_size * 2, hidden_size * 4),
             nn.SiLU(),
             nn.Linear(hidden_size * 4, 1)
         )
         
-        motion_input_dim = hidden_size * 2 if self.use_point_features_for_motion_decoding else hidden_size
         self.part_motion_classifier = nn.Sequential(
-            nn.Linear(motion_input_dim, hidden_size * 4),
+            nn.Linear(hidden_size, hidden_size * 4),
             nn.SiLU(),
             nn.Linear(hidden_size * 4, 4)  # 4 classes: 0 --> "no motion", 1 --> "revolute", 2 --> "prismatic", 3 --> "both"
         )
 
         self.motion_representation = motion_representation
-        motion_input_dim = hidden_size * 2 if self.use_point_features_for_motion_decoding else hidden_size
         self.revolute_motion_decoder = nn.Sequential(
-            nn.Linear(motion_input_dim, hidden_size * 4),
+            nn.Linear(hidden_size, hidden_size * 4),
             nn.SiLU(),
             nn.Linear(hidden_size * 4, (6 if self.motion_representation == 'per_part_plucker' else 3) + 2)  # Plucker coordinate in R^6 and low & high limits.
         )
         self.prismatic_motion_decoder = nn.Sequential(
-            nn.Linear(motion_input_dim, hidden_size * 4),
+            nn.Linear(hidden_size, hidden_size * 4),
             nn.SiLU(),
             nn.Linear(hidden_size * 4, 3 + 2)  # Axis only in R^3 and low & high limits.
         )
         if self.motion_representation == 'per_point_closest':
-            motion_input_dim = hidden_size * 3 if self.use_point_features_for_motion_decoding else hidden_size * 2
             self.point_motion_decoder = nn.Sequential(
-                nn.Linear(motion_input_dim, hidden_size * 4),
+                nn.Linear(hidden_size * 2, hidden_size * 4),
                 nn.SiLU(),
                 nn.Linear(hidden_size * 4, 3)  # Closest point on the axis to the point
             )
@@ -376,27 +371,6 @@ class PAT(nn.Module):
                         done = False
                         point_mask[..., part_id] = -torch.inf
                         part_ids = torch.argmax(point_mask, dim=-1)
-
-        if self.use_point_features_for_motion_decoding:
-            max_parts = point_mask.shape[-1]
-            part_id_mask = part_ids.unsqueeze(-1) == torch.arange(max_parts, device=x.device).unsqueeze(0).unsqueeze(0)  # (B, N, M)
-            sample_probs = torch.where(
-                part_id_mask,
-                1.0 - (self.point_feature_random_ratio if self.training else 0),
-                self.point_feature_random_ratio if self.training else 0
-            )  # (B, N, M)
-            point_to_part_mask = torch.bernoulli(sample_probs)  # (B, N, M)
-                
-            part_features = torch.einsum('bnd,bnm->bmd', x, point_to_part_mask)  # (B, M, D)
-            counts = point_to_part_mask.sum(dim=1)  # (B, M)
-            nonzero_mask = counts > 0  # (B, M)
-            part_features = torch.where(
-                nonzero_mask.unsqueeze(-1),
-                part_features / counts.unsqueeze(-1),
-                part_features
-            )
-
-            q = torch.cat([q, part_features], dim=-1)
 
         # Prepare input for part hierarchy decoder
         part_adjacency_matrix = self.part_hierarchy_decoder(

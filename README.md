@@ -40,6 +40,20 @@ Extra arguments:
 ## 💾 Data Preprocessing
 Please refer to [DATA.md](https://github.com/RuiningLi/particulate/blob/main/DATA.md).
 
+## 🏋️ Training
+
+First preprocess and cache the training assets as described in [DATA.md](DATA.md). Each dataset directory should contain one cached `.npz` file per asset and may use a JSON split file with `train` and `test` filename lists.
+
+Download the PartField checkpoint required for on-the-fly feature extraction by following [PartField's setup instructions](PartField/README.md), then place it at `PartField/model/model_objaverse.ckpt`.
+
+Edit the dataset paths in `configs/train-particulate-B.yaml` and launch single- or multi-GPU training with Accelerate:
+
+```bash
+accelerate launch train.py --config configs/train-particulate-B.yaml
+```
+
+The configuration reproduces the released Particulate-B architecture. Checkpoints and a resolved copy of the configuration are written beneath `output_dir`; set `resume_from_checkpoint` to an Accelerate checkpoint directory to resume training. Set `logger_type: none` to train without Weights & Biases.
+
 ## 🔎 Evaluation 
 
 To perform quantitative evaluation with our proposed protocol, during inference, enable `--eval` flag to save the results:
@@ -130,7 +144,7 @@ mkdir -p "$LIGHTWHEEL_EVAL_DIR" && python evaluate.py --gt_dir $LIGHTWHEEL_CACHE
 
 - [x] Release data preprocessing code.
 - [x] Release the Lightwheel benchmark & evaluation code.
-- [ ] Release training code.
+- [x] Release training code.
 
 ## Citation
 
